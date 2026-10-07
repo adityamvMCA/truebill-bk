@@ -1,0 +1,1 @@
+const {hasPermission}=require("../utils/permissions");const requirePermission=p=>(req,res,next)=>{if(!hasPermission(req.user,p))return res.status(403).json({success:false,message:"You do not have permission to perform this action"});next();};module.exports=requirePermission;
