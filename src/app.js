@@ -1,22 +1,56 @@
-const express=require("express");
-const cors=require("cors");
-const helmet=require("helmet");
-const morgan=require("morgan");
-const rateLimit=require("express-rate-limit");
-const authRoutes=require("./routes/authRoutes");
-const tenantRoutes=require("./routes/tenantRoutes");
-const customerRoutes=require("./routes/customerRoutes");
-const ledgerRoutes=require("./routes/ledgerRoutes");
-const errorHandler=require("./middleware/errorHandler");
-const app=express();
-app.set("trust proxy",1);
+const express = require("express");
+const cors = require("cors");
+const helmet = require("helmet");
+const morgan = require("morgan");
+const rateLimit = require("express-rate-limit");
+const authRoutes = require("./routes/authRoutes");
+const tenantRoutes = require("./routes/tenantRoutes");
+const customerRoutes = require("./routes/customerRoutes");
+const ledgerRoutes = require("./routes/ledgerRoutes");
+const errorHandler = require("./middleware/errorHandler");
+const appVersion = require("./config/appVersion");
+const app = express();
+app.set("trust proxy", 1);
 app.use(helmet());
-app.use(cors({origin:process.env.CORS_ORIGIN?process.env.CORS_ORIGIN.split(",").map(x=>x.trim()):true,credentials:true}));
-app.use(express.json({limit:"2mb"}));
-app.use(express.urlencoded({extended:true,limit:"2mb"}));
-if(process.env.NODE_ENV!=="test")app.use(morgan("dev"));
-app.use("/api",rateLimit({windowMs:15*60*1000,limit:300,standardHeaders:"draft-8",legacyHeaders:false}));
-app.get("/api/health",(req,res)=>res.json({success:true,message:"TrustIQ ERP API is running",time:new Date().toISOString()}));
-app.use("/api/auth",authRoutes);app.use("/api/tenants",tenantRoutes);app.use("/api/customers",customerRoutes);app.use("/api/ledgers",ledgerRoutes);
-app.use((req,res)=>res.status(404).json({success:false,message:"API route not found"}));
-app.use(errorHandler);module.exports=app;
+app.use(
+  cors({
+    origin: process.env.CORS_ORIGIN
+      ? process.env.CORS_ORIGIN.split(",").map((x) => x.trim())
+      : true,
+    credentials: true,
+  }),
+);
+app.use(express.json({ limit: "2mb" }));
+app.use(express.urlencoded({ extended: true, limit: "2mb" }));
+if (process.env.NODE_ENV !== "test") app.use(morgan("dev"));
+app.use(
+  "/api",
+  rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 300,
+    standardHeaders: "draft-8",
+    legacyHeaders: false,
+  }),
+);
+app.get("/api/health", (req, res) =>
+  res.json({
+    success: true,
+    message: "TrustIQ ERP API is running",
+    time: new Date().toISOString(),
+  }),
+);
+app.get("/api/app-version", (req, res) => {
+  res.json({
+    success: true,
+    data: appVersion.android,
+  });
+});
+app.use("/api/auth", authRoutes);
+app.use("/api/tenants", tenantRoutes);
+app.use("/api/customers", customerRoutes);
+app.use("/api/ledgers", ledgerRoutes);
+app.use((req, res) =>
+  res.status(404).json({ success: false, message: "API route not found" }),
+);
+app.use(errorHandler);
+module.exports = app;
