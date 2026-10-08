@@ -31,7 +31,7 @@ jobs:
              git fetch origin main && \
              git reset --hard origin/main && \
              npm ci --omit=dev && \
-             pm2 restart truebill-api --update-env'
+             sudo pm2 restart truebill-api --update-env'
 
       - name: Deployment successful
         run: echo "TrueBill API deployed successfully"
