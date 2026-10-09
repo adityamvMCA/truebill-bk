@@ -1,3 +1,75 @@
-const bcrypt=require("bcrypt");const jwt=require("jsonwebtoken");const User=require("../models/User");const Tenant=require("../models/Tenant");const {getRolePermissions}=require("../utils/permissions");
-const login=async(req,res)=>{const {email,username,password}=req.body;if(!password||(!email&&!username))return res.status(400).json({success:false,message:"Email/Username and password are required"});const q=[];if(email)q.push({email:String(email).toLowerCase().trim()});if(username)q.push({username:String(username).toLowerCase().trim()});const user=await User.findOne({$or:q}).select("+password");if(!user)return res.status(401).json({success:false,message:"Invalid credentials"});if(!user.isActive)return res.status(403).json({success:false,message:"User account is inactive"});if(!(await bcrypt.compare(password,user.password)))return res.status(401).json({success:false,message:"Invalid credentials"});let tenant=null;if(user.tenantId){tenant=await Tenant.findById(user.tenantId).lean();if(!tenant||!tenant.isActive)return res.status(403).json({success:false,message:"Tenant is inactive or unavailable"});}const token=jwt.sign({userId:user._id,platformRole:user.platformRole,role:user.role,tenantId:user.tenantId,clientCode:user.clientCode,developerCode:user.developerCode},process.env.JWT_SECRET,{expiresIn:process.env.JWT_EXPIRES_IN||"24h"});user.lastLoginAt=new Date();await user.save();res.json({success:true,message:"Login successful",token,user:{id:user._id,name:user.name,email:user.email,username:user.username,platformRole:user.platformRole,role:user.role,tenantId:user.tenantId,clientCode:user.clientCode,developerCode:user.developerCode,permissions:user.permissions?.length?user.permissions:getRolePermissions(user.role),tenant}});};
-const me=async(req,res)=>res.json({success:true,user:req.user});module.exports={login,me};
+const bcrypt = require("bcrypt");
+const jwt = require("jsonwebtoken");
+const User = require("../models/User");
+const Tenant = require("../models/Tenant");
+const { getRolePermissions } = require("../utils/permissions");
+const login = async (req, res) => {
+  const { email, username, password } = req.body;
+  if (!password || (!email && !username))
+    return res
+      .status(400)
+      .json({
+        success: false,
+        message: "Email/Username and password are required",
+      });
+  const q = [];
+  if (email) q.push({ email: String(email).toLowerCase().trim() });
+  if (username) q.push({ username: String(username).toLowerCase().trim() });
+  const user = await User.findOne({ $or: q }).select("+password");
+  if (!user)
+    return res
+      .status(401)
+      .json({ success: false, message: "Invalid credentials" });
+  if (!user.isActive)
+    return res
+      .status(403)
+      .json({ success: false, message: "User account is inactive" });
+  if (!(await bcrypt.compare(password, user.password)))
+    return res
+      .status(401)
+      .json({ success: false, message: "Invalid credentials" });
+  let tenant = null;
+  if (user.tenantId) {
+    tenant = await Tenant.findById(user.tenantId).lean();
+    if (!tenant || !tenant.isActive)
+      return res
+        .status(403)
+        .json({ success: false, message: "Tenant is inactive or unavailable" });
+  }
+  const token = jwt.sign(
+    {
+      userId: user._id,
+      platformRole: user.platformRole,
+      role: user.role,
+      tenantId: user.tenantId,
+      clientCode: user.clientCode,
+      developerCode: user.developerCode,
+    },
+    process.env.JWT_SECRET,
+    { expiresIn: process.env.JWT_EXPIRES_IN || "24h" },
+  );
+  user.lastLoginAt = new Date();
+  await user.save();
+  res.json({
+    success: true,
+    message: "Login successful",
+    token,
+    user: {
+      id: user._id,
+      name: user.name,
+      email: user.email,
+      username: user.username,
+      platformRole: user.platformRole,
+      role: user.role,
+      tenantId: user.tenantId,
+      clientCode: user.clientCode,
+      developerCode: user.developerCode,
+      permissions: user.permissions?.length
+        ? user.permissions
+        : getRolePermissions(user.role),
+      tenant,
+    },
+  });
+};
+const me = async (req, res) => res.json({ success: true, user: req.user });
+module.exports = { login, me };

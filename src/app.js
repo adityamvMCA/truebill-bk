@@ -9,7 +9,9 @@ const customerRoutes = require("./routes/customerRoutes");
 const ledgerRoutes = require("./routes/ledgerRoutes");
 const errorHandler = require("./middleware/errorHandler");
 const appVersion = require("./config/appVersion");
-
+const notificationRoutes = require("./routes/notificationRoutes");
+const deviceTokenRoutes = require("./routes/deviceTokenRoutes");
+const notificationPreferenceRoutes = require("./routes/notificationPreferenceRoutes");
 const app = express();
 
 app.set("trust proxy", 1);
@@ -86,9 +88,10 @@ app.use("/api/auth", authRoutes);
 app.use("/api/tenants", tenantRoutes);
 
 app.use("/api/customers", customerRoutes);
-
+app.use("/api/device-tokens", deviceTokenRoutes);
 app.use("/api/ledgers", ledgerRoutes);
-
+app.use("/api/notifications", notificationRoutes);
+app.use("/api/notification-preferences", notificationPreferenceRoutes);
 app.use((req, res) =>
   res.status(404).json({
     success: false,

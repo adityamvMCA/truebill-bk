@@ -29,6 +29,11 @@ const verifyToken = async (req, res, next) => {
       developerCode: user.developerCode,
       permissions: user.permissions || [],
     };
+    console.log("AUTH USER:", {
+  userId: req.user.userId,
+  tenantId: req.user.tenantId,
+  email: req.user.email,
+});
     next();
   } catch (e) {
     return res
