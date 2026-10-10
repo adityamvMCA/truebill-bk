@@ -13,6 +13,7 @@ const notificationRoutes = require("./routes/notificationRoutes");
 const deviceTokenRoutes = require("./routes/deviceTokenRoutes");
 const notificationPreferenceRoutes = require("./routes/notificationPreferenceRoutes");
 const menuRoutes = require("./routes/menuRoutes");
+const appUpdateRoutes = require("./routes/appUpdateRoutes");
 const app = express();
 
 app.set("trust proxy", 1);
@@ -94,6 +95,7 @@ app.use("/api/ledgers", ledgerRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/notification-preferences", notificationPreferenceRoutes);
 app.use("/api/menus", menuRoutes);
+app.use("/api/app-update", appUpdateRoutes);
 app.use((req, res) =>
   res.status(404).json({
     success: false,

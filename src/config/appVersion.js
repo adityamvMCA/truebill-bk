@@ -4,6 +4,6 @@ module.exports = {
     minimumVersion: "1.0.0",
     updateRequired: false,
     downloadUrl:
-      "https://truebillapi.trustiqtech.com/downloads/truebill-1.0.2.apk",
+      "https://truebillapi.trustiqtech.com/downloads/truebill-1.0.3.apk",
   },
 };

@@ -79,8 +79,39 @@ const createMany = async (notifications) => {
 
   return results;
 };
+const sendAppUpdateNotification = async ({
+  tenantId,
+  userId,
+  latestVersion,
+  minimumVersion,
+  updateRequired,
+  downloadUrl,
+}) => {
+  const title = updateRequired ? "Update required" : "New app update available";
 
+  const message = updateRequired
+    ? `TrueBill version ${latestVersion} is required. Please update to continue.`
+    : `TrueBill version ${latestVersion} is now available. Update for the latest improvements.`;
+
+  return create({
+    tenantId,
+    userId,
+    type: "APP_UPDATE",
+    title,
+    message,
+    icon: "smartphone",
+    priority: updateRequired ? "HIGH" : "NORMAL",
+    route: "/app-update",
+    data: {
+      latestVersion,
+      minimumVersion,
+      updateRequired,
+      downloadUrl,
+    },
+  });
+};
 module.exports = {
   create,
   createMany,
+  sendAppUpdateNotification,
 };
