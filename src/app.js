@@ -5,7 +5,8 @@ const morgan = require("morgan");
 const rateLimit = require("express-rate-limit");
 const authRoutes = require("./routes/authRoutes");
 const tenantRoutes = require("./routes/tenantRoutes");
-const customerRoutes = require("./routes/customerRoutes");
+// const customerRoutes = require("./routes/customerRoutes");
+const customerRoutes = require("./modules/customers/customer.routes");
 const ledgerRoutes = require("./routes/ledgerRoutes");
 const errorHandler = require("./middleware/errorHandler");
 const appVersion = require("./config/appVersion");
@@ -13,7 +14,8 @@ const notificationRoutes = require("./routes/notificationRoutes");
 const deviceTokenRoutes = require("./routes/deviceTokenRoutes");
 const notificationPreferenceRoutes = require("./routes/notificationPreferenceRoutes");
 const menuRoutes = require("./routes/menuRoutes");
-const appUpdateRoutes = require("./routes/appUpdateRoutes");
+const appUpdateRoutes = require("./routes/appUpdateRoutes")
+const accountingRoutes = require("./modules/accounting/accounting.routes");;
 const app = express();
 
 app.set("trust proxy", 1);
@@ -96,6 +98,7 @@ app.use("/api/notifications", notificationRoutes);
 app.use("/api/notification-preferences", notificationPreferenceRoutes);
 app.use("/api/menus", menuRoutes);
 app.use("/api/app-update", appUpdateRoutes);
+app.use("/api/accounting", accountingRoutes);
 app.use((req, res) =>
   res.status(404).json({
     success: false,
