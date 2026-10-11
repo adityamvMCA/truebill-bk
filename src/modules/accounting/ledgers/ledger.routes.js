@@ -1,6 +1,9 @@
 const express = require("express");
+
 const verifyToken = require("../../../middleware/authMiddleware");
+const resolveTenant = require("../../../middleware/tenantMiddleware");
 const requirePlatformRole = require("../../../middleware/platformMiddleware");
+
 const {
   getAllLedgers,
   seedLedgers,
@@ -9,18 +12,18 @@ const {
 
 const router = express.Router();
 
-router.get("/", verifyToken, getAllLedgers);
+router.use(verifyToken, resolveTenant);
+
+router.get("/", getAllLedgers);
 
 router.post(
   "/seed",
-  verifyToken,
   requirePlatformRole("developer"),
   seedLedgers
 );
 
 router.post(
   "/",
-  verifyToken,
   requirePlatformRole("developer"),
   createLedger
 );

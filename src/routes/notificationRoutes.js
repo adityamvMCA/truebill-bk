@@ -1,4 +1,5 @@
 const express = require("express");
+
 const {
   getNotifications,
   getUnreadCount,
@@ -8,14 +9,23 @@ const {
   createTypedTestNotification,
 } = require("../controllers/notificationController");
 
-const authMiddleware = require("../middleware/authMiddleware");
+const verifyToken = require("../middleware/authMiddleware");
+const resolveTenant = require("../middleware/tenantMiddleware");
 
 const router = express.Router();
 
-router.get("/", authMiddleware, getNotifications);
-router.get("/unread-count", authMiddleware, getUnreadCount);
-router.post("/test", authMiddleware, createTestNotification);
-router.patch("/:id/read", authMiddleware, markAsRead);
-router.patch("/read-all", authMiddleware, markAllAsRead);
-router.post("/test-typed", authMiddleware, createTypedTestNotification);
+router.use(verifyToken, resolveTenant);
+
+router.get("/", getNotifications);
+
+router.get("/unread-count", getUnreadCount);
+
+router.post("/test", createTestNotification);
+
+router.patch("/:id/read", markAsRead);
+
+router.patch("/read-all", markAllAsRead);
+
+router.post("/test-typed", createTypedTestNotification);
+
 module.exports = router;

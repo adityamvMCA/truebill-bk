@@ -1,35 +1,203 @@
+const mongoose = require("mongoose");
+
 const Customer = require("./customer.model");
 const AuditLog = require("../../models/AuditLog");
 const { getNextSequence } = require("../../utils/sequenceGenerator");
+const NotificationService = require("../../services/notificationService");
+const Ledger = require("../accounting/ledgers/ledger.model");
+const LedgerGroup = require("../accounting/ledger-groups/ledgerGroup.model");
 
-const createCustomer = async ({
+const NORMAL_BALANCE_BY_NATURE = {
+  ASSET: "DEBIT",
+  EXPENSE: "DEBIT",
+  LIABILITY: "CREDIT",
+  INCOME: "CREDIT",
+  EQUITY: "CREDIT",
+};
+
+const createCustomerLedger = async ({
   tenantId,
   userId,
-  payload,
-  ipAddress,
+  customer,
+  session,
 }) => {
-  const customerCode = await getNextSequence(
-    "CU",
-    tenantId.toString()
+  const sundryDebtorsGroup = await LedgerGroup.findOne({
+    tenantId,
+    code: "SUNDRY_DEBTORS",
+    isActive: true,
+  })
+    .session(session)
+    .lean();
+
+  if (!sundryDebtorsGroup) {
+    const error = new Error(
+      "Sundry Debtors ledger group is missing. Seed accounting groups before creating customers.",
+    );
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const normalBalance = NORMAL_BALANCE_BY_NATURE[sundryDebtorsGroup.nature];
+
+  if (!normalBalance) {
+    const error = new Error(
+      "Sundry Debtors ledger group has an invalid account nature.",
+    );
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const ledgerCode = `CUST-${customer.customerCode}`.toUpperCase();
+
+  const openingBalance = Number(customer.openingBalance) || 0;
+
+  const ledgers = await Ledger.create(
+    [
+      {
+        tenantId,
+        ledgerGroupId: sundryDebtorsGroup._id,
+        code: ledgerCode,
+        name: customer.customerName,
+        type: "CUSTOMER",
+        nature: sundryDebtorsGroup.nature,
+        normalBalance,
+
+        openingBalance,
+        openingBalanceType: customer.openingBalanceType || normalBalance,
+
+        currentBalance: openingBalance,
+        currentBalanceType: customer.openingBalanceType || normalBalance,
+
+        referenceType: "CUSTOMER",
+        referenceId: customer._id,
+
+        creditLimit: Number(customer.creditLimit) || 0,
+        creditDays: Number(customer.creditDays) || 0,
+
+        isSystem: false,
+        isActive: customer.status === "Active",
+
+        description: `Customer ledger for ${customer.customerName} (${customer.customerCode})`,
+
+        createdBy: userId,
+        updatedBy: userId,
+      },
+    ],
+    { session },
   );
 
-  const customer = await Customer.create({
-    ...payload,
-    customerCode,
-    tenantId,
-  });
+  return ledgers[0];
+};
 
-  await AuditLog.create({
-    tenantId,
-    userId,
-    action: "CREATE",
-    module: "CUSTOMER",
-    documentId: customer._id,
-    newData: customer.toObject(),
-    ipAddress,
-  });
+const syncCustomerLedger = async ({ customer, userId }) => {
+  if (!customer.ledgerId) {
+    return null;
+  }
 
-  return customer;
+  const ledger = await Ledger.findOneAndUpdate(
+    {
+      _id: customer.ledgerId,
+      tenantId: customer.tenantId,
+      type: "CUSTOMER",
+      referenceType: "CUSTOMER",
+      referenceId: customer._id,
+    },
+    {
+      $set: {
+        name: customer.customerName,
+        creditLimit: Number(customer.creditLimit) || 0,
+        creditDays: Number(customer.creditDays) || 0,
+        isActive: customer.status === "Active",
+        description: `Customer ledger for ${customer.customerName} (${customer.customerCode})`,
+        updatedBy: userId,
+      },
+    },
+    {
+      new: true,
+    },
+  );
+
+  if (!ledger) {
+    const error = new Error(
+      "Linked customer ledger was not found. Customer update was not completed.",
+    );
+    error.statusCode = 409;
+    throw error;
+  }
+
+  return ledger;
+};
+
+const createCustomer = async ({ tenantId, userId, payload, ipAddress }) => {
+  const session = await mongoose.startSession();
+
+  try {
+    let createdCustomer;
+
+    await session.withTransaction(async () => {
+      const customerCode = await getNextSequence("CU", tenantId.toString());
+
+      const customerRecords = await Customer.create(
+        [
+          {
+            ...payload,
+            customerCode,
+            tenantId,
+          },
+        ],
+        { session },
+      );
+
+      const customer = customerRecords[0];
+
+      const ledger = await createCustomerLedger({
+        tenantId,
+        userId,
+        customer,
+        session,
+      });
+
+      customer.ledgerId = ledger._id;
+      await customer.save({ session });
+
+      await AuditLog.create(
+        [
+          {
+            tenantId,
+            userId,
+            action: "CREATE",
+            module: "CUSTOMER",
+            documentId: customer._id,
+            newData: customer.toObject(),
+            ipAddress,
+          },
+        ],
+        { session },
+      );
+
+      createdCustomer = customer;
+    });
+
+    await NotificationService.create({
+      tenantId,
+      userId,
+      type: "NEW_CUSTOMER",
+      title: "New customer created",
+      message: `${createdCustomer.customerName} (${createdCustomer.customerCode}) was added successfully.`,
+      icon: "user-plus",
+      priority: "NORMAL",
+      route: `/customers/code/${createdCustomer.customerCode}`,
+      data: {
+        customerId: createdCustomer._id.toString(),
+        customerCode: createdCustomer.customerCode,
+        ledgerId: createdCustomer.ledgerId?.toString() || null,
+      },
+    });
+
+    return createdCustomer;
+  } finally {
+    await session.endSession();
+  }
 };
 
 const getCustomers = async ({
@@ -40,10 +208,8 @@ const getCustomers = async ({
   limit = 20,
 }) => {
   const currentPage = Math.max(Number(page) || 1, 1);
-  const pageLimit = Math.min(
-    Math.max(Number(limit) || 20, 1),
-    100
-  );
+
+  const pageLimit = Math.min(Math.max(Number(limit) || 20, 1), 100);
 
   const filter = {
     tenantId,
@@ -105,16 +271,15 @@ const getCustomers = async ({
     },
   };
 };
-const getCustomerById = async ({
-  tenantId,
-  customerCode,
-}) => {
+
+const getCustomerById = async ({ tenantId, customerCode }) => {
   return Customer.findOne({
     customerCode: String(customerCode).trim().toUpperCase(),
     tenantId,
     isDeleted: false,
   });
 };
+
 const updateCustomer = async ({
   tenantId,
   userId,
@@ -122,53 +287,102 @@ const updateCustomer = async ({
   payload,
   ipAddress,
 }) => {
-  const customer = await Customer.findOne({
-    customerCode: String(customerCode).trim().toUpperCase(),
-    tenantId,
-    isDeleted: false,
-  });
+  const session = await mongoose.startSession();
 
-  if (!customer) {
-    const error = new Error("Customer not found");
-    error.statusCode = 404;
-    throw error;
+  try {
+    let updatedCustomer;
+
+    await session.withTransaction(async () => {
+      const customer = await Customer.findOne({
+        customerCode: String(customerCode).trim().toUpperCase(),
+        tenantId,
+        isDeleted: false,
+      }).session(session);
+
+      if (!customer) {
+        const error = new Error("Customer not found");
+        error.statusCode = 404;
+        throw error;
+      }
+
+      const oldData = customer.toObject();
+
+      const protectedFields = [
+        "_id",
+        "tenantId",
+        "customerCode",
+        "ledgerId",
+        "isDeleted",
+        "deletedAt",
+        "deletedBy",
+        "createdAt",
+        "updatedAt",
+        "__v",
+      ];
+
+      for (const [key, value] of Object.entries(payload || {})) {
+        if (!protectedFields.includes(key)) {
+          customer[key] = value;
+        }
+      }
+
+      await customer.save({ session });
+
+      if (customer.ledgerId) {
+        const ledger = await Ledger.findOneAndUpdate(
+          {
+            _id: customer.ledgerId,
+            tenantId,
+            type: "CUSTOMER",
+            referenceType: "CUSTOMER",
+            referenceId: customer._id,
+          },
+          {
+            $set: {
+              name: customer.customerName,
+              creditLimit: Number(customer.creditLimit) || 0,
+              creditDays: Number(customer.creditDays) || 0,
+              isActive: customer.status === "Active",
+              description: `Customer ledger for ${customer.customerName} (${customer.customerCode})`,
+              updatedBy: userId,
+            },
+          },
+          {
+            new: true,
+            session,
+          },
+        );
+
+        if (!ledger) {
+          const error = new Error("Linked customer ledger was not found.");
+          error.statusCode = 409;
+          throw error;
+        }
+      }
+
+      await AuditLog.create(
+        [
+          {
+            tenantId,
+            userId,
+            action: "UPDATE",
+            module: "CUSTOMER",
+            documentId: customer._id,
+            oldData,
+            newData: customer.toObject(),
+            ipAddress,
+          },
+        ],
+        { session },
+      );
+
+      updatedCustomer = customer;
+    });
+
+    return updatedCustomer;
+  } finally {
+    await session.endSession();
   }
-
-  const oldData = customer.toObject();
-
-  const protectedFields = [
-    "_id",
-    "tenantId",
-    "customerCode",
-    "ledgerId",
-    "isDeleted",
-    "deletedAt",
-    "deletedBy",
-    "createdAt",
-    "updatedAt",
-    "__v",
-  ];
-
-  for (const [key, value] of Object.entries(payload || {})) {
-    if (!protectedFields.includes(key)) {
-      customer[key] = value;
-    }
-  }
-
-  await customer.save();
-
-  await AuditLog.create({
-    tenantId,
-    userId,
-    action: "UPDATE",
-    module: "CUSTOMER",
-    documentId: customer._id,
-    oldData,
-    newData: customer.toObject(),
-    ipAddress,
-  });
-
-  return customer;
 };
 
 const deleteCustomer = async ({
@@ -177,38 +391,83 @@ const deleteCustomer = async ({
   customerCode,
   ipAddress,
 }) => {
-  const customer = await Customer.findOne({
-    customerCode: String(customerCode).trim().toUpperCase(),
-    tenantId,
-    isDeleted: false,
-  });
+  const session = await mongoose.startSession();
 
-  if (!customer) {
-    const error = new Error("Customer not found");
-    error.statusCode = 404;
-    throw error;
+  try {
+    let deletedCustomer;
+
+    await session.withTransaction(async () => {
+      const customer = await Customer.findOne({
+        customerCode: String(customerCode).trim().toUpperCase(),
+        tenantId,
+        isDeleted: false,
+      }).session(session);
+
+      if (!customer) {
+        const error = new Error("Customer not found");
+        error.statusCode = 404;
+        throw error;
+      }
+
+      const oldData = customer.toObject();
+
+      customer.isDeleted = true;
+      customer.deletedAt = new Date();
+      customer.deletedBy = userId;
+
+      await customer.save({ session });
+
+      if (customer.ledgerId) {
+        const ledger = await Ledger.findOneAndUpdate(
+          {
+            _id: customer.ledgerId,
+            tenantId,
+            type: "CUSTOMER",
+            referenceType: "CUSTOMER",
+            referenceId: customer._id,
+          },
+          {
+            $set: {
+              isActive: false,
+              updatedBy: userId,
+            },
+          },
+          {
+            new: true,
+            session,
+          },
+        );
+
+        if (!ledger) {
+          const error = new Error("Linked customer ledger was not found.");
+          error.statusCode = 409;
+          throw error;
+        }
+      }
+
+      await AuditLog.create(
+        [
+          {
+            tenantId,
+            userId,
+            action: "DELETE",
+            module: "CUSTOMER",
+            documentId: customer._id,
+            oldData,
+            newData: customer.toObject(),
+            ipAddress,
+          },
+        ],
+        { session },
+      );
+
+      deletedCustomer = customer;
+    });
+
+    return deletedCustomer;
+  } finally {
+    await session.endSession();
   }
-
-  const oldData = customer.toObject();
-
-  customer.isDeleted = true;
-  customer.deletedAt = new Date();
-  customer.deletedBy = userId;
-
-  await customer.save();
-
-  await AuditLog.create({
-    tenantId,
-    userId,
-    action: "DELETE",
-    module: "CUSTOMER",
-    documentId: customer._id,
-    oldData,
-    newData: customer.toObject(),
-    ipAddress,
-  });
-
-  return customer;
 };
 
 module.exports = {

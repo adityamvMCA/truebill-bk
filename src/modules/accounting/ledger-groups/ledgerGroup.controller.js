@@ -3,7 +3,7 @@ const ledgerGroupService = require("./ledgerGroup.service");
 const getGroups = async (req, res, next) => {
   try {
     const groups = await ledgerGroupService.getLedgerGroups({
-      tenantId: req.user.tenantId,
+      tenantId: req.tenantId,
       nature: req.query.nature,
       includeInactive: req.query.includeInactive === "true",
     });
@@ -21,7 +21,7 @@ const getGroups = async (req, res, next) => {
 const seedGroups = async (req, res, next) => {
   try {
     const result = await ledgerGroupService.seedLedgerGroupsForTenant({
-      tenantId: req.user.tenantId,
+      tenantId: req.tenantId,
       userId: req.user.userId,
     });
 
@@ -38,7 +38,7 @@ const seedGroups = async (req, res, next) => {
 const createGroup = async (req, res, next) => {
   try {
     const group = await ledgerGroupService.createCustomLedgerGroup({
-      tenantId: req.user.tenantId,
+      tenantId: req.tenantId,
       userId: req.user.userId,
       ...req.body,
     });

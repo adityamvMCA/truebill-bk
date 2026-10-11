@@ -3,7 +3,7 @@ const ledgerService = require("./ledger.service");
 const getAllLedgers = async (req, res, next) => {
   try {
     const ledgers = await ledgerService.getLedgers({
-      tenantId: req.user.tenantId,
+      tenantId: req.tenantId,
       groupCode: req.query.groupCode,
       type: req.query.type,
       nature: req.query.nature,
@@ -23,7 +23,7 @@ const getAllLedgers = async (req, res, next) => {
 const seedLedgers = async (req, res, next) => {
   try {
     const result = await ledgerService.seedLedgersForTenant({
-      tenantId: req.user.tenantId,
+      tenantId: req.tenantId,
       userId: req.user.userId,
     });
 
@@ -40,7 +40,7 @@ const seedLedgers = async (req, res, next) => {
 const createLedger = async (req, res, next) => {
   try {
     const ledger = await ledgerService.createLedger({
-      tenantId: req.user.tenantId,
+      tenantId: req.tenantId,
       userId: req.user.userId,
       ...req.body,
     });

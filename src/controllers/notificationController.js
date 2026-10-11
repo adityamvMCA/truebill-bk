@@ -2,7 +2,9 @@ const Notification = require("../models/Notification");
 const NotificationService = require("../services/notificationService");
 const getNotifications = async (req, res, next) => {
   try {
-    const { tenantId, userId } = req.user;
+    // const { tenantId, userId } = req.user;
+    const tenantId = req.tenantId;
+    const userId = req.user.userId;
 
     const page = Math.max(Number(req.query.page) || 1, 1);
     const limit = Math.min(Math.max(Number(req.query.limit) || 20, 1), 100);
@@ -50,7 +52,9 @@ const getNotifications = async (req, res, next) => {
 
 const getUnreadCount = async (req, res, next) => {
   try {
-    const { tenantId, userId } = req.user;
+    // const { tenantId, userId } = req.user;
+    const tenantId = req.tenantId;
+    const userId = req.user.userId;
 
     const unreadCount = await Notification.countDocuments({
       tenantId,
@@ -70,7 +74,9 @@ const getUnreadCount = async (req, res, next) => {
 };
 const createTestNotification = async (req, res, next) => {
   try {
-    const { tenantId, userId } = req.user;
+    // const { tenantId, userId } = req.user;
+    const tenantId = req.tenantId;
+    const userId = req.user.userId;
 
     const notification = await NotificationService.create({
       tenantId,
@@ -97,7 +103,9 @@ const createTestNotification = async (req, res, next) => {
 
 const markAsRead = async (req, res, next) => {
   try {
-    const { tenantId, userId } = req.user;
+    // const { tenantId, userId } = req.user;
+    const tenantId = req.tenantId;
+    const userId = req.user.userId;
     const { id } = req.params;
 
     const notification = await Notification.findOneAndUpdate(
@@ -134,7 +142,9 @@ const markAsRead = async (req, res, next) => {
 };
 const markAllAsRead = async (req, res, next) => {
   try {
-    const { tenantId, userId } = req.user;
+    // const { tenantId, userId } = req.user;
+    const tenantId = req.tenantId;
+    const userId = req.user.userId;
 
     await Notification.updateMany(
       {
@@ -213,7 +223,9 @@ const markAllAsRead = async (req, res, next) => {
 
 const createTypedTestNotification = async (req, res, next) => {
   try {
-    const { tenantId, userId } = req.user;
+    // const { tenantId, userId } = req.user;
+    const tenantId = req.tenantId;
+    const userId = req.user.userId;
 
     const {
       type = "SYSTEM",
