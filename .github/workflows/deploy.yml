@@ -1,4 +1,3 @@
-
 name: Deploy TrueBill API
 
 on:
@@ -34,7 +33,7 @@ jobs:
              git fetch origin main
              git reset --hard origin/main
              npm ci --omit=dev
-             pm2 restart truebill-api --update-env
+             sudo -n -u root /usr/bin/env PM2_HOME=/root/.pm2 /usr/bin/pm2 restart truebill-api --update-env
              sleep 3
              curl --fail --silent --show-error \
                http://127.0.0.1:5001/api/health
