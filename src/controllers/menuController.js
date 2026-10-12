@@ -34,7 +34,7 @@ const buildMenuData = (body, existing = {}) => {
   const children =
     body.children !== undefined
       ? (Array.isArray(body.children) ? body.children : []).map((c, i) =>
-          buildChild(c, i, roles)
+          buildChild(c, i, roles),
         )
       : existing.children;
 
@@ -43,19 +43,19 @@ const buildMenuData = (body, existing = {}) => {
     group: String(body.group ?? existing.group ?? "").trim(),
     groupOrder: Number(body.groupOrder ?? existing.groupOrder ?? 0),
     label: String(body.label ?? existing.label ?? "").trim(),
-    icon: body.icon !== undefined ? body.icon : existing.icon ?? null,
-    path: body.path !== undefined ? body.path : existing.path ?? null,
+    icon: body.icon !== undefined ? body.icon : (existing.icon ?? null),
+    path: body.path !== undefined ? body.path : (existing.path ?? null),
     feature:
       body.feature !== undefined
         ? normalizeFeature(body.feature)
-        : existing.feature ?? null,
+        : (existing.feature ?? null),
     roles,
     order: Number(body.order ?? existing.order ?? 0),
     children,
     isActive:
       body.isActive !== undefined
         ? body.isActive === true || body.isActive === "true"
-        : existing.isActive ?? true,
+        : (existing.isActive ?? true),
   };
 };
 
@@ -76,89 +76,217 @@ const validateMenu = (menu) => {
 const fail = (res, status, message) =>
   res.status(status).json({ success: false, message });
 
+// const getMenuByRole = async (req, res) => {
+//   try {
+//     const userRole = norm(req.user?.role || "");
+//     const appCode = norm(req.query.appCode || "truebill");
+//     const isDeveloper = req.user?.platformRole === "developer";
+
+//     if (!userRole && !isDeveloper) return fail(res, 401, "User role is missing");
+
+//     let ent = null;
+//     if (!isDeveloper) {
+//       if (!req.user?.tenantId) return fail(res, 403, "Tenant access required");
+//       ent = await getEntitlements(req.user.tenantId);
+//       if (!ent.valid)
+//         return res.status(402).json({
+//           success: false,
+//           code: ent.reason,
+//           message: "Subscription is inactive or expired",
+//         });
+//     }
+
+//     const query = { appCode, isActive: true };
+//     if (!isDeveloper) query.roles = userRole;
+
+//     const menus = await Menu.find(query)
+//       .sort({ groupOrder: 1, order: 1, label: 1 })
+//       .lean();
+
+//     const allowed = (feature) =>
+//       !ent || !feature || ent.features.has(norm(feature));
+
+//     const groupMap = new Map();
+
+//     for (const menu of menus) {
+//       if (!allowed(menu.feature)) continue;
+
+//       const children = (menu.children || [])
+//         .filter(
+//           (c) =>
+//             c.isActive !== false &&
+//             (isDeveloper || (c.roles || []).includes(userRole)) &&
+//             allowed(c.feature)
+//         )
+//         .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+//         .map(({ roles, isActive, ...child }) => child);
+
+//       const { createdBy, createdAt, updatedAt, __v, roles, ...menuData } = menu;
+//       const item = { ...menuData };
+//       if (children.length) item.children = children;
+//       else delete item.children;
+
+//       if (!groupMap.has(menu.group))
+//         groupMap.set(menu.group, {
+//           group: menu.group,
+//           groupOrder: menu.groupOrder ?? 0,
+//           items: [],
+//         });
+//       groupMap.get(menu.group).items.push(item);
+//     }
+
+//     const menuGroups = [...groupMap.values()]
+//       .sort((a, b) => a.groupOrder - b.groupOrder)
+//       .map((g) => ({ ...g, items: g.items.sort((a, b) => a.order - b.order) }));
+
+//     return res.json({
+//       success: true,
+//       role: userRole,
+//       appCode,
+//       menuGroups,
+//       subscription: ent && {
+//         plan: ent.plan,
+//         status: ent.status,
+//         daysLeft: ent.daysLeft,
+//         inGrace: ent.inGrace,
+//         features: [...ent.features],
+//         limits: ent.limits,
+//       },
+//     });
+//   } catch (error) {
+//     console.error("Get menus error:", error);
+//     return fail(res, 500, "Failed to fetch menus");
+//   }
+// };
+
 const getMenuByRole = async (req, res) => {
   try {
     const userRole = norm(req.user?.role || "");
     const appCode = norm(req.query.appCode || "truebill");
     const isDeveloper = req.user?.platformRole === "developer";
+    const isSupport = req.user?.platformRole === "support";
 
-    if (!userRole && !isDeveloper) return fail(res, 401, "User role is missing");
+    if (!userRole && !isDeveloper && !isSupport) {
+      return fail(res, 401, "User role is missing");
+    }
 
     let ent = null;
-    if (!isDeveloper) {
-      if (!req.user?.tenantId) return fail(res, 403, "Tenant access required");
+
+    if (!isDeveloper && !isSupport) {
+      if (!req.user?.tenantId) {
+        return fail(res, 403, "Tenant access required");
+      }
+
       ent = await getEntitlements(req.user.tenantId);
-      if (!ent.valid)
+
+      if (!ent.valid) {
         return res.status(402).json({
           success: false,
           code: ent.reason,
           message: "Subscription is inactive or expired",
         });
+      }
     }
 
-    const query = { appCode, isActive: true };
-    if (!isDeveloper) query.roles = userRole;
+    const featureSet =
+      ent?.features instanceof Set
+        ? ent.features
+        : new Set(ent?.features || []);
+
+    const query = {
+      appCode,
+      isActive: true,
+    };
+
+    if (!isDeveloper && !isSupport) {
+      query.roles = userRole;
+    }
 
     const menus = await Menu.find(query)
-      .sort({ groupOrder: 1, order: 1, label: 1 })
+      .sort({
+        groupOrder: 1,
+        order: 1,
+        label: 1,
+      })
       .lean();
 
-    const allowed = (feature) =>
-      !ent || !feature || ent.features.has(norm(feature));
+    const allowed = (feature) => {
+      if (!feature) return true;
+
+      if (isDeveloper || isSupport) return true;
+
+      return featureSet.has(norm(feature));
+    };
 
     const groupMap = new Map();
 
     for (const menu of menus) {
-      if (!allowed(menu.feature)) continue;
+      if (!allowed(menu.feature)) {
+        continue;
+      }
 
       const children = (menu.children || [])
         .filter(
-          (c) =>
-            c.isActive !== false &&
-            (isDeveloper || (c.roles || []).includes(userRole)) &&
-            allowed(c.feature)
+          (child) =>
+            child.isActive !== false &&
+            (isDeveloper ||
+              isSupport ||
+              (child.roles || []).includes(userRole)) &&
+            allowed(child.feature),
         )
         .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
         .map(({ roles, isActive, ...child }) => child);
 
       const { createdBy, createdAt, updatedAt, __v, roles, ...menuData } = menu;
-      const item = { ...menuData };
-      if (children.length) item.children = children;
-      else delete item.children;
 
-      if (!groupMap.has(menu.group))
+      const item = { ...menuData };
+
+      if (children.length) {
+        item.children = children;
+      } else {
+        delete item.children;
+      }
+
+      if (!groupMap.has(menu.group)) {
         groupMap.set(menu.group, {
           group: menu.group,
           groupOrder: menu.groupOrder ?? 0,
           items: [],
         });
+      }
+
       groupMap.get(menu.group).items.push(item);
     }
 
     const menuGroups = [...groupMap.values()]
       .sort((a, b) => a.groupOrder - b.groupOrder)
-      .map((g) => ({ ...g, items: g.items.sort((a, b) => a.order - b.order) }));
+      .map((group) => ({
+        ...group,
+        items: group.items.sort((a, b) => a.order - b.order),
+      }));
 
     return res.json({
       success: true,
       role: userRole,
       appCode,
       menuGroups,
-      subscription: ent && {
-        plan: ent.plan,
-        status: ent.status,
-        daysLeft: ent.daysLeft,
-        inGrace: ent.inGrace,
-        features: [...ent.features],
-        limits: ent.limits,
-      },
+      subscription: ent
+        ? {
+            plan: ent.plan,
+            status: ent.status,
+            daysLeft: ent.daysLeft,
+            inGrace: ent.inGrace,
+            features: Array.from(featureSet),
+            limits: ent.limits,
+          }
+        : null,
     });
   } catch (error) {
     console.error("Get menus error:", error);
+
     return fail(res, 500, "Failed to fetch menus");
   }
 };
-
 const getAllMenus = async (req, res) => {
   try {
     const filter = {};
@@ -189,7 +317,11 @@ const createMenu = async (req, res) => {
       .json({ success: true, message: "Menu created successfully", menu });
   } catch (error) {
     if (error.code === 11000)
-      return fail(res, 409, "A menu with this label already exists in this group");
+      return fail(
+        res,
+        409,
+        "A menu with this label already exists in this group",
+      );
     console.error("Create menu error:", error);
     return fail(res, 500, "Failed to create menu");
   }
@@ -202,7 +334,11 @@ const addChild = async (req, res) => {
     }).lean();
     if (!parent) return fail(res, 404, "Menu not found");
 
-    const child = buildChild(req.body, parent.children?.length || 0, parent.roles);
+    const child = buildChild(
+      req.body,
+      parent.children?.length || 0,
+      parent.roles,
+    );
     if (!child.label) return fail(res, 400, "Submenu name is required");
     if (!validatePath(child.path))
       return fail(res, 400, "Submenu path must start with /");
@@ -213,12 +349,12 @@ const addChild = async (req, res) => {
         "children.label": {
           $not: new RegExp(
             `^${child.label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`,
-            "i"
+            "i",
           ),
         },
       },
       { $push: { children: child } },
-      { new: true }
+      { new: true },
     );
 
     if (!menu) return fail(res, 409, "This submenu already exists");
@@ -233,7 +369,9 @@ const addChild = async (req, res) => {
 
 const updateMenu = async (req, res) => {
   try {
-    const menu = await Menu.findOne({ documentNumber: req.params.documentNumber });
+    const menu = await Menu.findOne({
+      documentNumber: req.params.documentNumber,
+    });
     if (!menu) return fail(res, 404, "Menu not found");
 
     const data = buildMenuData(req.body, menu.toObject());
@@ -242,10 +380,18 @@ const updateMenu = async (req, res) => {
 
     Object.assign(menu, data);
     await menu.save();
-    return res.json({ success: true, message: "Menu updated successfully", menu });
+    return res.json({
+      success: true,
+      message: "Menu updated successfully",
+      menu,
+    });
   } catch (error) {
     if (error.code === 11000)
-      return fail(res, 409, "A menu with this label already exists in this group");
+      return fail(
+        res,
+        409,
+        "A menu with this label already exists in this group",
+      );
     console.error("Update menu error:", error);
     return fail(res, 500, "Failed to update menu");
   }
@@ -256,10 +402,13 @@ const deleteMenu = async (req, res) => {
     const menu = await Menu.findOneAndUpdate(
       { documentNumber: req.params.documentNumber },
       { $set: { isActive: false } },
-      { new: true }
+      { new: true },
     );
     if (!menu) return fail(res, 404, "Menu not found");
-    return res.json({ success: true, message: "Menu deactivated successfully" });
+    return res.json({
+      success: true,
+      message: "Menu deactivated successfully",
+    });
   } catch (error) {
     console.error("Delete menu error:", error);
     return fail(res, 500, "Failed to deactivate menu");
@@ -281,7 +430,8 @@ const bulkMenus = async (req, res) => {
       if (err) return fail(res, 400, `${data.label || "Menu"}: ${err}`);
 
       const key = `${data.appCode}|${data.group}|${data.label}`;
-      if (seen.has(key)) return fail(res, 409, `Duplicate in request: ${data.label}`);
+      if (seen.has(key))
+        return fail(res, 409, `Duplicate in request: ${data.label}`);
       seen.add(key);
 
       docs.push({

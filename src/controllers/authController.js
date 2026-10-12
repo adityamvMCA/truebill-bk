@@ -1,16 +1,150 @@
 
+// const bcrypt = require("bcrypt");
+// const jwt = require("jsonwebtoken");
+// const User = require("../models/User");
+// const Tenant = require("../models/Tenant");
+// const { getRolePermissions } = require("../utils/permissions");
+// const {
+//   getEntitlements,
+//   serializeEntitlements,
+// } = require("../services/entitlements");
+
+// const fail = (res, status, message, extra = {}) =>
+//   res.status(status).json({ success: false, message, ...extra });
+
+// const DUMMY_HASH =
+//   "$2b$10$CwTycUXWue0Thq9StjUM0uJ8.Qe6Zc5Yw2cH3vC0v1o9m0o8m5q8a";
+
+// const publicUser = (user) => ({
+//   id: user._id,
+//   name: user.name,
+//   email: user.email,
+//   username: user.username,
+//   platformRole: user.platformRole,
+//   role: user.role,
+//   tenantId: user.tenantId,
+//   clientCode: user.clientCode,
+//   developerCode: user.developerCode,
+//     permissions: getRolePermissions(user.role),
+//   // permissions: user.permissions?.length
+//   //   ? user.permissions
+//   //   : getRolePermissions(user.role),
+// });
+
+// const login = async (req, res) => {
+//   try {
+//     const { email, username, password } = req.body;
+
+//     if (!password || (!email && !username))
+//       return fail(res, 400, "Email/Username and password are required");
+
+//     const q = [];
+//     if (email) q.push({ email: String(email).toLowerCase().trim() });
+//     if (username) q.push({ username: String(username).toLowerCase().trim() });
+
+//     const user = await User.findOne({ $or: q }).select("+password");
+
+//     const hash = user?.password || DUMMY_HASH;
+//     const passwordOk = await bcrypt.compare(String(password), hash);
+
+//     if (!user || !passwordOk) return fail(res, 401, "Invalid credentials");
+//     if (!user.isActive) return fail(res, 403, "User account is inactive");
+
+//     let tenant = null;
+//     let subscription = null;
+
+//     if (user.tenantId) {
+//       tenant = await Tenant.findById(user.tenantId)
+//         .select("name code status isActive subscriptionPlan subscriptionEnd")
+//         .lean();
+
+//       if (!tenant || !tenant.isActive)
+//         return fail(res, 403, "Tenant is inactive or unavailable");
+
+//       subscription = serializeEntitlements(await getEntitlements(user.tenantId));
+//     }
+
+//     const token = jwt.sign(
+//       {
+//         userId: user._id,
+//         platformRole: user.platformRole,
+//         role: user.role,
+//         tenantId: user.tenantId,
+//         clientCode: user.clientCode,
+//         developerCode: user.developerCode,
+//       },
+//       process.env.JWT_SECRET,
+//       { expiresIn: process.env.JWT_EXPIRES_IN || "24h" }
+//     );
+
+//     await User.updateOne({ _id: user._id }, { $set: { lastLoginAt: new Date() } });
+
+//     return res.json({
+//       success: true,
+//       message: "Login successful",
+//       token,
+//       user: { ...publicUser(user), tenant },
+//       subscription,
+//     });
+//   } catch (error) {
+//     console.error("Login error:", error);
+//     return fail(res, 500, "Login failed");
+//   }
+// };
+
+// const me = async (req, res) => {
+//   try {
+//     let subscription = null;
+//     let tenant = null;
+
+//     if (req.user.tenantId) {
+//       tenant = await Tenant.findById(req.user.tenantId)
+//         .select("name code status isActive subscriptionPlan subscriptionEnd")
+//         .lean();
+//       subscription = serializeEntitlements(
+//         await getEntitlements(req.user.tenantId)
+//       );
+//     }
+
+//     return res.json({
+//       success: true,
+//       user: { ...req.user, tenant },
+//       subscription,
+//     });
+//   } catch (error) {
+//     console.error("Me error:", error);
+//     return fail(res, 500, "Failed to load profile");
+//   }
+// };
+
+// module.exports = { login, me };
+
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
+
 const User = require("../models/User");
 const Tenant = require("../models/Tenant");
-const { getRolePermissions } = require("../utils/permissions");
+
+const {
+  getRolePermissions,
+} = require("../utils/permissions");
+
 const {
   getEntitlements,
   serializeEntitlements,
 } = require("../services/entitlements");
 
-const fail = (res, status, message, extra = {}) =>
-  res.status(status).json({ success: false, message, ...extra });
+const fail = (
+  res,
+  status,
+  message,
+  extra = {},
+) =>
+  res.status(status).json({
+    success: false,
+    message,
+    ...extra,
+  });
 
 const DUMMY_HASH =
   "$2b$10$CwTycUXWue0Thq9StjUM0uJ8.Qe6Zc5Yw2cH3vC0v1o9m0o8m5q8a";
@@ -25,96 +159,241 @@ const publicUser = (user) => ({
   tenantId: user.tenantId,
   clientCode: user.clientCode,
   developerCode: user.developerCode,
-    permissions: getRolePermissions(user.role),
-  // permissions: user.permissions?.length
-  //   ? user.permissions
-  //   : getRolePermissions(user.role),
+  permissions:
+    user.permissions?.length
+      ? user.permissions
+      : getRolePermissions(user.role),
 });
+
+const getTenantForAuth = async (
+  tenantId,
+) => {
+  return Tenant.findById(tenantId)
+    .select(
+      "businessName clientCode status isActive subscriptionPlan subscriptionStart subscriptionEnd features limits",
+    )
+    .lean();
+};
 
 const login = async (req, res) => {
   try {
-    const { email, username, password } = req.body;
+    const {
+      email,
+      username,
+      password,
+    } = req.body;
 
-    if (!password || (!email && !username))
-      return fail(res, 400, "Email/Username and password are required");
+    if (
+      !password ||
+      (!email && !username)
+    ) {
+      return fail(
+        res,
+        400,
+        "Email/Username and password are required",
+      );
+    }
 
-    const q = [];
-    if (email) q.push({ email: String(email).toLowerCase().trim() });
-    if (username) q.push({ username: String(username).toLowerCase().trim() });
+    const queryConditions = [];
 
-    const user = await User.findOne({ $or: q }).select("+password");
+    if (email) {
+      queryConditions.push({
+        email: String(email)
+          .toLowerCase()
+          .trim(),
+      });
+    }
 
-    const hash = user?.password || DUMMY_HASH;
-    const passwordOk = await bcrypt.compare(String(password), hash);
+    if (username) {
+      queryConditions.push({
+        username: String(username)
+          .toLowerCase()
+          .trim(),
+      });
+    }
 
-    if (!user || !passwordOk) return fail(res, 401, "Invalid credentials");
-    if (!user.isActive) return fail(res, 403, "User account is inactive");
+    const user = await User.findOne({
+      $or: queryConditions,
+    }).select("+password");
+
+    const hash =
+      user?.password || DUMMY_HASH;
+
+    const passwordOk =
+      await bcrypt.compare(
+        String(password),
+        hash,
+      );
+
+    if (!user || !passwordOk) {
+      return fail(
+        res,
+        401,
+        "Invalid credentials",
+      );
+    }
+
+    if (!user.isActive) {
+      return fail(
+        res,
+        403,
+        "User account is inactive",
+      );
+    }
 
     let tenant = null;
+
     let subscription = null;
 
     if (user.tenantId) {
-      tenant = await Tenant.findById(user.tenantId)
-        .select("name code status isActive subscriptionPlan subscriptionEnd")
-        .lean();
+      tenant = await getTenantForAuth(
+        user.tenantId,
+      );
 
-      if (!tenant || !tenant.isActive)
-        return fail(res, 403, "Tenant is inactive or unavailable");
+      if (!tenant || !tenant.isActive) {
+        return fail(
+          res,
+          403,
+          "Tenant is inactive or unavailable",
+        );
+      }
 
-      subscription = serializeEntitlements(await getEntitlements(user.tenantId));
+      const entitlements =
+        await getEntitlements(tenant);
+
+      subscription =
+        serializeEntitlements(
+          entitlements,
+        );
     }
 
     const token = jwt.sign(
       {
         userId: user._id,
-        platformRole: user.platformRole,
+        platformRole:
+          user.platformRole,
         role: user.role,
-        tenantId: user.tenantId,
-        clientCode: user.clientCode,
-        developerCode: user.developerCode,
+        tenantId:
+          user.tenantId || null,
+        clientCode:
+          user.clientCode || null,
+        developerCode:
+          user.developerCode || null,
       },
       process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_EXPIRES_IN || "24h" }
+      {
+        expiresIn:
+          process.env.JWT_EXPIRES_IN ||
+          "24h",
+      },
     );
 
-    await User.updateOne({ _id: user._id }, { $set: { lastLoginAt: new Date() } });
+    await User.updateOne(
+      {
+        _id: user._id,
+      },
+      {
+        $set: {
+          lastLoginAt: new Date(),
+        },
+      },
+    );
 
     return res.json({
       success: true,
       message: "Login successful",
       token,
-      user: { ...publicUser(user), tenant },
+      user: {
+        ...publicUser(user),
+        tenant: tenant
+          ? {
+              id: tenant._id,
+              businessName:
+                tenant.businessName,
+              clientCode:
+                tenant.clientCode,
+              status: tenant.status,
+              subscriptionPlan:
+                tenant.subscriptionPlan,
+              subscriptionEnd:
+                tenant.subscriptionEnd,
+            }
+          : null,
+      },
       subscription,
     });
   } catch (error) {
-    console.error("Login error:", error);
-    return fail(res, 500, "Login failed");
+    console.error(
+      "Login error:",
+      error,
+    );
+
+    return fail(
+      res,
+      500,
+      "Login failed",
+    );
   }
 };
 
 const me = async (req, res) => {
   try {
-    let subscription = null;
     let tenant = null;
 
+    let subscription = null;
+
     if (req.user.tenantId) {
-      tenant = await Tenant.findById(req.user.tenantId)
-        .select("name code status isActive subscriptionPlan subscriptionEnd")
-        .lean();
-      subscription = serializeEntitlements(
-        await getEntitlements(req.user.tenantId)
+      tenant = await getTenantForAuth(
+        req.user.tenantId,
       );
+
+      if (tenant) {
+        const entitlements =
+          await getEntitlements(tenant);
+
+        subscription =
+          serializeEntitlements(
+            entitlements,
+          );
+      }
     }
 
     return res.json({
       success: true,
-      user: { ...req.user, tenant },
+      user: {
+        ...req.user,
+        tenant: tenant
+          ? {
+              id: tenant._id,
+              businessName:
+                tenant.businessName,
+              clientCode:
+                tenant.clientCode,
+              status: tenant.status,
+              subscriptionPlan:
+                tenant.subscriptionPlan,
+              subscriptionEnd:
+                tenant.subscriptionEnd,
+            }
+          : null,
+      },
       subscription,
     });
   } catch (error) {
-    console.error("Me error:", error);
-    return fail(res, 500, "Failed to load profile");
+    console.error(
+      "Me error:",
+      error,
+    );
+
+    return fail(
+      res,
+      500,
+      "Failed to load profile",
+    );
   }
 };
 
-module.exports = { login, me };
+module.exports = {
+  login,
+  me,
+};
