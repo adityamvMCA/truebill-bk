@@ -1,3 +1,5 @@
+const fs = require("fs");
+
 const {
   cert,
   getApps,
@@ -13,12 +15,38 @@ const initializeFirebaseAdmin = () => {
     process.env.FIREBASE_SERVICE_ACCOUNT_PATH;
 
   if (!serviceAccountPath) {
-    throw new Error(
+    const error = new Error(
       "FIREBASE_SERVICE_ACCOUNT_PATH is not configured",
     );
+
+    error.isFirebaseConfigError = true;
+
+    throw error;
   }
 
-  const serviceAccount = require(serviceAccountPath);
+  if (!fs.existsSync(serviceAccountPath)) {
+    const error = new Error(
+      `Firebase service-account file not found: ${serviceAccountPath}`,
+    );
+
+    error.isFirebaseConfigError = true;
+
+    throw error;
+  }
+
+  let serviceAccount;
+
+  try {
+    serviceAccount = require(serviceAccountPath);
+  } catch (error) {
+    const configError = new Error(
+      `Unable to read Firebase service-account file: ${error.message}`,
+    );
+
+    configError.isFirebaseConfigError = true;
+
+    throw configError;
+  }
 
   if (
     serviceAccount.type !== "service_account" ||
@@ -26,9 +54,13 @@ const initializeFirebaseAdmin = () => {
     !serviceAccount.client_email ||
     !serviceAccount.private_key
   ) {
-    throw new Error(
+    const error = new Error(
       "Invalid Firebase service-account configuration",
     );
+
+    error.isFirebaseConfigError = true;
+
+    throw error;
   }
 
   const firebaseApp = initializeApp({
@@ -42,6 +74,23 @@ const initializeFirebaseAdmin = () => {
   return firebaseApp;
 };
 
+const initializeFirebaseAdminSafe = () => {
+  try {
+    return initializeFirebaseAdmin();
+  } catch (error) {
+    if (error.isFirebaseConfigError) {
+      console.warn(
+        `Firebase Admin skipped: ${error.message}`,
+      );
+
+      return null;
+    }
+
+    throw error;
+  }
+};
+
 module.exports = {
   initializeFirebaseAdmin,
+  initializeFirebaseAdminSafe,
 };
