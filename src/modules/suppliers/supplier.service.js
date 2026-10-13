@@ -5,17 +5,11 @@ const AuditLog = require("../../models/AuditLog");
 
 const { getNextSequence } = require("../../utils/sequenceGenerator");
 
-const NotificationService = require(
-  "../../services/notificationService",
-);
+const NotificationService = require("../../services/notificationService");
 
-const Ledger = require(
-  "../accounting/ledgers/ledger.model",
-);
+const Ledger = require("../accounting/ledgers/ledger.model");
 
-const LedgerGroup = require(
-  "../accounting/ledger-groups/ledgerGroup.model",
-);
+const LedgerGroup = require("../accounting/ledger-groups/ledgerGroup.model");
 
 const NORMAL_BALANCE_BY_NATURE = {
   ASSET: "DEBIT",
@@ -31,14 +25,13 @@ const createSupplierLedger = async ({
   supplier,
   session,
 }) => {
-  const sundryCreditorsGroup =
-    await LedgerGroup.findOne({
-      tenantId,
-      code: "SUNDRY_CREDITORS",
-      isActive: true,
-    })
-      .session(session)
-      .lean();
+  const sundryCreditorsGroup = await LedgerGroup.findOne({
+    tenantId,
+    code: "SUNDRY_CREDITORS",
+    isActive: true,
+  })
+    .session(session)
+    .lean();
 
   if (!sundryCreditorsGroup) {
     const error = new Error(
@@ -50,10 +43,7 @@ const createSupplierLedger = async ({
     throw error;
   }
 
-  const normalBalance =
-    NORMAL_BALANCE_BY_NATURE[
-      sundryCreditorsGroup.nature
-    ];
+  const normalBalance = NORMAL_BALANCE_BY_NATURE[sundryCreditorsGroup.nature];
 
   if (!normalBalance) {
     const error = new Error(
@@ -65,19 +55,16 @@ const createSupplierLedger = async ({
     throw error;
   }
 
-  const ledgerCode =
-    `SUPP-${supplier.supplierCode}`.toUpperCase();
+  const ledgerCode = `SUPP-${supplier.supplierCode}`.toUpperCase();
 
-  const openingBalance =
-    Number(supplier.openingBalance) || 0;
+  const openingBalance = Number(supplier.openingBalance) || 0;
 
   const ledgers = await Ledger.create(
     [
       {
         tenantId,
 
-        ledgerGroupId:
-          sundryCreditorsGroup._id,
+        ledgerGroupId: sundryCreditorsGroup._id,
 
         code: ledgerCode,
 
@@ -91,25 +78,19 @@ const createSupplierLedger = async ({
 
         openingBalance,
 
-        openingBalanceType:
-          supplier.openingBalanceType ||
-          normalBalance,
+        openingBalanceType: supplier.openingBalanceType || normalBalance,
 
         currentBalance: openingBalance,
 
-        currentBalanceType:
-          supplier.openingBalanceType ||
-          normalBalance,
+        currentBalanceType: supplier.openingBalanceType || normalBalance,
 
         referenceType: "SUPPLIER",
 
         referenceId: supplier._id,
 
-        creditLimit:
-          Number(supplier.creditLimit) || 0,
+        creditLimit: Number(supplier.creditLimit) || 0,
 
-        creditDays:
-          Number(supplier.creditDays) || 0,
+        creditDays: Number(supplier.creditDays) || 0,
 
         isSystem: false,
 
@@ -128,22 +109,14 @@ const createSupplierLedger = async ({
   return ledgers[0];
 };
 
-const createSupplier = async ({
-  tenantId,
-  userId,
-  payload,
-  ipAddress,
-}) => {
+const createSupplier = async ({ tenantId, userId, payload, ipAddress }) => {
   const session = await mongoose.startSession();
 
   try {
     let createdSupplier;
 
     await session.withTransaction(async () => {
-      const supplierCode = await getNextSequence(
-        "SU",
-        tenantId.toString(),
-      );
+      const supplierCode = await getNextSequence("SU", tenantId.toString());
 
       const supplierRecords = await Supplier.create(
         [
@@ -196,9 +169,8 @@ const createSupplier = async ({
       Keep this notification only if NEW_SUPPLIER
       exists in preferenceMap and preference schema.
     */
-    await NotificationService.create({
+    await NotificationService.createForTenant({
       tenantId,
-      userId,
       type: "NEW_SUPPLIER",
       title: "New supplier created",
       message: `${createdSupplier.supplierName} (${createdSupplier.supplierCode}) was added successfully.`,
@@ -207,14 +179,10 @@ const createSupplier = async ({
       route: `/suppliers/code/${createdSupplier.supplierCode}`,
       data: {
         supplierId: createdSupplier._id.toString(),
-        supplierCode:
-          createdSupplier.supplierCode,
-        ledgerId:
-          createdSupplier.ledgerId?.toString() ||
-          null,
+        supplierCode: createdSupplier.supplierCode,
+        ledgerId: createdSupplier.ledgerId?.toString() || null,
       },
     });
-
     return createdSupplier;
   } finally {
     await session.endSession();
@@ -228,15 +196,9 @@ const getSuppliers = async ({
   page = 1,
   limit = 20,
 }) => {
-  const currentPage = Math.max(
-    Number(page) || 1,
-    1,
-  );
+  const currentPage = Math.max(Number(page) || 1, 1);
 
-  const pageLimit = Math.min(
-    Math.max(Number(limit) || 20, 1),
-    100,
-  );
+  const pageLimit = Math.min(Math.max(Number(limit) || 20, 1), 100);
 
   const filter = {
     tenantId,
@@ -299,14 +261,9 @@ const getSuppliers = async ({
   };
 };
 
-const getSupplierByCode = async ({
-  tenantId,
-  supplierCode,
-}) => {
+const getSupplierByCode = async ({ tenantId, supplierCode }) => {
   return Supplier.findOne({
-    supplierCode: String(supplierCode)
-      .trim()
-      .toUpperCase(),
+    supplierCode: String(supplierCode).trim().toUpperCase(),
 
     tenantId,
 
@@ -328,9 +285,7 @@ const updateSupplier = async ({
 
     await session.withTransaction(async () => {
       const supplier = await Supplier.findOne({
-        supplierCode: String(supplierCode)
-          .trim()
-          .toUpperCase(),
+        supplierCode: String(supplierCode).trim().toUpperCase(),
 
         tenantId,
 
@@ -361,9 +316,7 @@ const updateSupplier = async ({
         "__v",
       ];
 
-      for (const [key, value] of Object.entries(
-        payload || {},
-      )) {
+      for (const [key, value] of Object.entries(payload || {})) {
         if (!protectedFields.includes(key)) {
           supplier[key] = value;
         }
@@ -372,38 +325,32 @@ const updateSupplier = async ({
       await supplier.save({ session });
 
       if (supplier.ledgerId) {
-        const ledger =
-          await Ledger.findOneAndUpdate(
-            {
-              _id: supplier.ledgerId,
-              tenantId,
-              type: "SUPPLIER",
-              referenceType: "SUPPLIER",
-              referenceId: supplier._id,
+        const ledger = await Ledger.findOneAndUpdate(
+          {
+            _id: supplier.ledgerId,
+            tenantId,
+            type: "SUPPLIER",
+            referenceType: "SUPPLIER",
+            referenceId: supplier._id,
+          },
+          {
+            $set: {
+              name: supplier.supplierName,
+              creditLimit: Number(supplier.creditLimit) || 0,
+              creditDays: Number(supplier.creditDays) || 0,
+              isActive: supplier.status === "Active",
+              description: `Supplier ledger for ${supplier.supplierName} (${supplier.supplierCode})`,
+              updatedBy: userId,
             },
-            {
-              $set: {
-                name: supplier.supplierName,
-                creditLimit:
-                  Number(supplier.creditLimit) || 0,
-                creditDays:
-                  Number(supplier.creditDays) || 0,
-                isActive:
-                  supplier.status === "Active",
-                description: `Supplier ledger for ${supplier.supplierName} (${supplier.supplierCode})`,
-                updatedBy: userId,
-              },
-            },
-            {
-              new: true,
-              session,
-            },
-          );
+          },
+          {
+            new: true,
+            session,
+          },
+        );
 
         if (!ledger) {
-          const error = new Error(
-            "Linked supplier ledger was not found.",
-          );
+          const error = new Error("Linked supplier ledger was not found.");
 
           error.statusCode = 409;
 
@@ -449,9 +396,7 @@ const deleteSupplier = async ({
 
     await session.withTransaction(async () => {
       const supplier = await Supplier.findOne({
-        supplierCode: String(supplierCode)
-          .trim()
-          .toUpperCase(),
+        supplierCode: String(supplierCode).trim().toUpperCase(),
 
         tenantId,
 
@@ -476,31 +421,28 @@ const deleteSupplier = async ({
       await supplier.save({ session });
 
       if (supplier.ledgerId) {
-        const ledger =
-          await Ledger.findOneAndUpdate(
-            {
-              _id: supplier.ledgerId,
-              tenantId,
-              type: "SUPPLIER",
-              referenceType: "SUPPLIER",
-              referenceId: supplier._id,
+        const ledger = await Ledger.findOneAndUpdate(
+          {
+            _id: supplier.ledgerId,
+            tenantId,
+            type: "SUPPLIER",
+            referenceType: "SUPPLIER",
+            referenceId: supplier._id,
+          },
+          {
+            $set: {
+              isActive: false,
+              updatedBy: userId,
             },
-            {
-              $set: {
-                isActive: false,
-                updatedBy: userId,
-              },
-            },
-            {
-              new: true,
-              session,
-            },
-          );
+          },
+          {
+            new: true,
+            session,
+          },
+        );
 
         if (!ledger) {
-          const error = new Error(
-            "Linked supplier ledger was not found.",
-          );
+          const error = new Error("Linked supplier ledger was not found.");
 
           error.statusCode = 409;
 

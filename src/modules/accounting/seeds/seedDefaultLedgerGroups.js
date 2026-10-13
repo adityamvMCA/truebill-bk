@@ -194,41 +194,66 @@ const DEFAULT_LEDGER_GROUPS = [
   },
 ];
 
-const seedDefaultLedgerGroups = async ({ tenantId, userId = null }) => {
+const seedDefaultLedgerGroups = async ({
+  tenantId,
+  userId = null,
+  session = null,
+}) => {
   if (!tenantId) {
-    throw new Error("tenantId is required to seed ledger groups");
+    throw new Error(
+      "tenantId is required to seed ledger groups",
+    );
   }
 
-  const operations = DEFAULT_LEDGER_GROUPS.map((group) => ({
-    updateOne: {
-      filter: {
-        tenantId,
-        code: group.code,
-      },
-      update: {
-        $setOnInsert: {
+  const operations = DEFAULT_LEDGER_GROUPS.map(
+    (group) => ({
+      updateOne: {
+        filter: {
           tenantId,
-          ...group,
-          isSystem: true,
-          isActive: true,
-          createdBy: userId,
-          updatedBy: userId,
+          code: group.code,
         },
+        update: {
+          $setOnInsert: {
+            tenantId,
+            ...group,
+            isSystem: true,
+            isActive: true,
+            createdBy: userId,
+            updatedBy: userId,
+          },
+        },
+        upsert: true,
       },
-      upsert: true,
-    },
-  }));
+    }),
+  );
 
-  const result = await LedgerGroup.bulkWrite(operations, {
+  const bulkOptions = {
     ordered: false,
-  });
+  };
 
-  const groups = await LedgerGroup.find({
+  if (session) {
+    bulkOptions.session = session;
+  }
+
+  const result = await LedgerGroup.bulkWrite(
+    operations,
+    bulkOptions,
+  );
+
+  const groupQuery = LedgerGroup.find({
     tenantId,
     isActive: true,
   })
-    .sort({ nature: 1, name: 1 })
-    .lean();
+    .sort({
+      nature: 1,
+      name: 1,
+    });
+
+  if (session) {
+    groupQuery.session(session);
+  }
+
+  const groups = await groupQuery.lean();
 
   return {
     insertedCount: result.upsertedCount || 0,

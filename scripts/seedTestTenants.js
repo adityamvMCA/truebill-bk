@@ -6,9 +6,29 @@ const bcrypt = require("bcrypt");
 const Tenant = require("../src/models/Tenant");
 const User = require("../src/models/User");
 
-const { getNextSequence } = require("../src/utils/sequenceGenerator");
-const { getRolePermissions } = require("../src/utils/permissions");
-const { PLANS } = require("../src/config/subscriptionPlans");
+const { getNextSequence } = require(
+  "../src/utils/sequenceGenerator",
+);
+
+const { getRolePermissions } = require(
+  "../src/utils/permissions",
+);
+
+const { PLANS } = require(
+  "../src/config/subscriptionPlans",
+);
+
+const {
+  seedDefaultLedgerGroups,
+} = require(
+  "../src/modules/accounting/seeds/seedDefaultLedgerGroups",
+);
+
+const {
+  seedDefaultLedgers,
+} = require(
+  "../src/modules/accounting/seeds/seedDefaultLedgers",
+);
 
 const MONGODB_URI =
   process.env.MONGODB_URI ||
@@ -103,6 +123,7 @@ const seedTestTenants = async () => {
         );
 
         skippedTenants += 1;
+
         continue;
       }
 
@@ -114,6 +135,7 @@ const seedTestTenants = async () => {
         );
 
         skippedTenants += 1;
+
         continue;
       }
 
@@ -121,18 +143,21 @@ const seedTestTenants = async () => {
 
       const endDate = new Date(
         startDate.getTime() +
-          plan.durationDays * 24 * 60 * 60 * 1000,
+          plan.durationDays *
+            24 *
+            60 *
+            60 *
+            1000,
       );
 
-      const clientCode = await getNextSequence(
-        "TRD",
-        "PLATFORM",
-      );
+      const clientCode =
+        await getNextSequence(
+          "TRD",
+          "PLATFORM",
+        );
 
-      const hashedPassword = await bcrypt.hash(
-        adminPassword,
-        12,
-      );
+      const hashedPassword =
+        await bcrypt.hash(adminPassword, 12);
 
       const tenant = await Tenant.create({
         clientCode,
@@ -151,6 +176,24 @@ const seedTestTenants = async () => {
         status: "active",
       });
 
+      /*
+        Seed default Tally-style ledger groups
+        for the newly created tenant.
+      */
+      await seedDefaultLedgerGroups({
+        tenantId: tenant._id,
+        userId: null,
+      });
+
+      /*
+        Seed default system ledgers such as
+        Cash, Sales, Purchase and GST ledgers.
+      */
+      await seedDefaultLedgers({
+        tenantId: tenant._id,
+        userId: null,
+      });
+
       const admin = await User.create({
         name: adminName,
         email: normalizedAdminEmail,
@@ -159,22 +202,44 @@ const seedTestTenants = async () => {
         role: "admin",
         tenantId: tenant._id,
         clientCode: tenant.clientCode,
-        permissions: getRolePermissions("admin"),
+        permissions: getRolePermissions(
+          "admin",
+        ),
       });
 
       createdTenants += 1;
 
-      console.log(`✔ Created: ${businessName}`);
-      console.log(`   Tenant Code: ${tenant.clientCode}`);
-      console.log(`   Tenant ID: ${tenant._id}`);
-      console.log(`   Plan: ${subscriptionPlan}`);
+      console.log(
+        `✔ Created: ${businessName}`,
+      );
+      console.log(
+        `   Tenant Code: ${tenant.clientCode}`,
+      );
+      console.log(
+        `   Tenant ID: ${tenant._id}`,
+      );
+      console.log(
+        `   Plan: ${subscriptionPlan}`,
+      );
       console.log(`   Admin: ${admin.email}`);
-      console.log(`   Password: ${adminPassword}`);
-      console.log(`   Expires: ${endDate.toISOString()}`);
+      console.log(
+        `   Password: ${adminPassword}`,
+      );
+      console.log(
+        `   Expires: ${endDate.toISOString()}`,
+      );
+      console.log(
+        `   Ledger groups: seeded`,
+      );
+      console.log(
+        `   Default ledgers: seeded`,
+      );
       console.log("");
     }
 
-    console.log("Test tenant seeding completed");
+    console.log(
+      "Test tenant seeding completed",
+    );
     console.log(`Created: ${createdTenants}`);
     console.log(`Skipped: ${skippedTenants}`);
 
@@ -191,7 +256,10 @@ const seedTestTenants = async () => {
         `Duplicate key error on: ${duplicateField}`,
       );
     } else {
-      console.error("Test tenant seeding failed:", error);
+      console.error(
+        "Test tenant seeding failed:",
+        error,
+      );
     }
 
     await mongoose.connection.close();
@@ -201,3 +269,5 @@ const seedTestTenants = async () => {
 };
 
 seedTestTenants();
+
+////node scripts/seedTestTenants.js

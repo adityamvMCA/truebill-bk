@@ -253,88 +253,128 @@ const DEFAULT_LEDGERS = [
   },
 ];
 
-const seedDefaultLedgers = async ({ tenantId, userId = null }) => {
+const seedDefaultLedgers = async ({
+  tenantId,
+  userId = null,
+  session = null,
+}) => {
   if (!tenantId) {
-    throw new Error("tenantId is required to seed default ledgers");
+    throw new Error(
+      "tenantId is required to seed default ledgers",
+    );
   }
 
-  const groups = await LedgerGroup.find({
+  const groupQuery = LedgerGroup.find({
     tenantId,
     isActive: true,
   })
-    .select("_id code nature")
-    .lean();
+    .select("_id code nature");
+
+  if (session) {
+    groupQuery.session(session);
+  }
+
+  const groups = await groupQuery.lean();
 
   const groupMap = new Map(
-    groups.map((group) => [group.code, group])
+    groups.map((group) => [group.code, group]),
   );
 
   const missingGroups = DEFAULT_LEDGERS
-    .filter((ledger) => !groupMap.has(ledger.groupCode))
+    .filter(
+      (ledger) =>
+        !groupMap.has(ledger.groupCode),
+    )
     .map((ledger) => ledger.groupCode);
 
   if (missingGroups.length) {
     throw new Error(
       `Required ledger groups are missing: ${[
         ...new Set(missingGroups),
-      ].join(", ")}`
+      ].join(", ")}`,
     );
   }
 
-  const operations = DEFAULT_LEDGERS.map((ledger) => {
-    const group = groupMap.get(ledger.groupCode);
-    const normalBalance = getNormalBalance(ledger.nature);
+  const operations = DEFAULT_LEDGERS.map(
+    (ledger) => {
+      const group = groupMap.get(
+        ledger.groupCode,
+      );
 
-    return {
-      updateOne: {
-        filter: {
-          tenantId,
-          code: ledger.code,
-        },
-        update: {
-          $setOnInsert: {
+      const normalBalance = getNormalBalance(
+        ledger.nature,
+      );
+
+      return {
+        updateOne: {
+          filter: {
             tenantId,
-            ledgerGroupId: group._id,
             code: ledger.code,
-            name: ledger.name,
-            type: ledger.type,
-            nature: ledger.nature,
-            normalBalance,
-            openingBalance: 0,
-            openingBalanceType: normalBalance,
-            currentBalance: 0,
-            currentBalanceType: normalBalance,
-            referenceType: null,
-            referenceId: null,
-            creditLimit: 0,
-            creditDays: 0,
-            isSystem: true,
-            isActive: true,
-            description: ledger.description,
-            createdBy: userId,
-            updatedBy: userId,
           },
+          update: {
+            $setOnInsert: {
+              tenantId,
+              ledgerGroupId: group._id,
+              code: ledger.code,
+              name: ledger.name,
+              type: ledger.type,
+              nature: ledger.nature,
+              normalBalance,
+              openingBalance: 0,
+              openingBalanceType:
+                normalBalance,
+              currentBalance: 0,
+              currentBalanceType:
+                normalBalance,
+              referenceType: null,
+              referenceId: null,
+              creditLimit: 0,
+              creditDays: 0,
+              isSystem: true,
+              isActive: true,
+              description: ledger.description,
+              createdBy: userId,
+              updatedBy: userId,
+            },
+          },
+          upsert: true,
         },
-        upsert: true,
-      },
-    };
-  });
+      };
+    },
+  );
 
-  const result = await Ledger.bulkWrite(operations, {
+  const bulkOptions = {
     ordered: false,
-  });
+  };
 
-  const ledgers = await Ledger.find({
+  if (session) {
+    bulkOptions.session = session;
+  }
+
+  const result = await Ledger.bulkWrite(
+    operations,
+    bulkOptions,
+  );
+
+  const ledgerQuery = Ledger.find({
     tenantId,
     isActive: true,
     isSystem: true,
   })
-    .populate("ledgerGroupId", "code name nature")
+    .populate(
+      "ledgerGroupId",
+      "code name nature",
+    )
     .sort({
       nature: 1,
       name: 1,
-    })
-    .lean();
+    });
+
+  if (session) {
+    ledgerQuery.session(session);
+  }
+
+  const ledgers = await ledgerQuery.lean();
 
   return {
     insertedCount: result.upsertedCount || 0,
