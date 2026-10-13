@@ -1,162 +1,3 @@
-
-
-// // const Notification = require("../models/Notification");
-// // const NotificationPreference = require("../models/NotificationPreference");
-
-// // const preferenceMap = {
-// //   LOW_STOCK: "lowStock",
-// //   SALES_ORDER: "salesOrder",
-// //   PURCHASE_ORDER: "purchaseOrder",
-// //   PAYMENT_RECEIVED: "paymentReceived",
-// //   PAYMENT_OVERDUE: "paymentOverdue",
-// //   APPROVAL_REQUIRED: "approvalRequired",
-// //   NEW_CUSTOMER: "newCustomer",
-// //   SYSTEM: "system",
-// //   APP_UPDATE: "appUpdate",
-// // };
-
-// // const create = async ({
-// //   tenantId,
-// //   userId,
-// //   type,
-// //   title,
-// //   message,
-// //   icon = "bell",
-// //   priority = "NORMAL",
-// //   route = null,
-// //   data = {},
-// // }) => {
-// //   if (!tenantId) {
-// //     throw new Error("tenantId is required");
-// //   }
-
-// //   if (!userId) {
-// //     throw new Error("userId is required");
-// //   }
-
-// //   if (!type) {
-// //     throw new Error("Notification type is required");
-// //   }
-
-// //   if (!title) {
-// //     throw new Error("Notification title is required");
-// //   }
-
-// //   if (!message) {
-// //     throw new Error("Notification message is required");
-// //   }
-
-// //   const preferenceField = preferenceMap[type];
-
-// //   if (preferenceField) {
-// //     const preferences =
-// //       await NotificationPreference.findOne({
-// //         tenantId,
-// //         userId,
-// //       }).lean();
-
-// //     if (
-// //       preferences &&
-// //       preferences[preferenceField] === false
-// //     ) {
-// //       return null;
-// //     }
-
-// //     if (
-// //       preferences &&
-// //       preferences.pushEnabled === false
-// //     ) {
-// //       return null;
-// //     }
-// //   }
-
-// //   return Notification.create({
-// //     tenantId,
-// //     userId,
-// //     type,
-// //     title,
-// //     message,
-// //     icon,
-// //     priority,
-// //     route,
-// //     data,
-// //   });
-// // };
-
-// // const createMany = async (notifications) => {
-// //   if (
-// //     !Array.isArray(notifications) ||
-// //     notifications.length === 0
-// //   ) {
-// //     return [];
-// //   }
-
-// //   const results = [];
-
-// //   for (const notification of notifications) {
-// //     const created = await create(notification);
-
-// //     if (created) {
-// //       results.push(created);
-// //     }
-// //   }
-
-// //   return results;
-// // };
-
-// // const sendAppUpdateNotification = async ({
-// //   tenantId,
-// //   userId,
-// //   latestVersion,
-// //   minimumVersion,
-// //   updateRequired,
-// //   downloadUrl,
-// // }) => {
-// //   const requiredUpdate =
-// //     updateRequired === true ||
-// //     updateRequired === "true";
-
-// //   const title = requiredUpdate
-// //     ? "Update required"
-// //     : "New app update available";
-
-// //   const message = requiredUpdate
-// //     ? `TrueBill version ${latestVersion} is required. Please update to continue.`
-// //     : `TrueBill version ${latestVersion} is now available. Update for the latest improvements.`;
-
-// //   const payload = {
-// //     tenantId,
-// //     userId,
-// //     type: "APP_UPDATE",
-// //     title,
-// //     message,
-// //     icon: "smartphone",
-// //     priority: requiredUpdate
-// //       ? "CRITICAL"
-// //       : "NORMAL",
-// //     route: "/app-update",
-// //     data: {
-// //       platform: "android",
-// //       latestVersion,
-// //       minimumVersion,
-// //       updateRequired: requiredUpdate,
-// //       downloadUrl,
-// //     },
-// //   };
-
-// //   if (requiredUpdate) {
-// //     return Notification.create(payload);
-// //   }
-
-// //   return create(payload);
-// // };
-
-// // module.exports = {
-// //   create,
-// //   createMany,
-// //   sendAppUpdateNotification,
-// // };
-
 // const Notification = require("../models/Notification");
 // const NotificationPreference = require(
 //   "../models/NotificationPreference",
@@ -186,6 +27,18 @@
 //   "CRITICAL",
 // ];
 
+// /*
+//   In-app icon names mapped to Android drawable resources.
+//   Change the right-side values to match files in:
+//   android/app/src/main/res/drawable/
+// */
+// const ANDROID_NOTIFICATION_ICONS = {
+//   bell: "ic_notification",
+//   smartphone: "ic_notification",
+//   "low-stock": "ic_notification",
+//   "app-update": "ic_notification",
+// };
+
 // const normalizeType = (type) =>
 //   String(type || "")
 //     .trim()
@@ -202,6 +55,10 @@
 //     ? normalized
 //     : "NORMAL";
 // };
+
+// const getAndroidIcon = (icon) =>
+//   ANDROID_NOTIFICATION_ICONS[icon] ||
+//   "ic_notification";
 
 // const toFcmStringData = (data = {}) => {
 //   const result = {};
@@ -383,6 +240,10 @@
 //       notification.priority,
 //     );
 
+//     const androidIcon = getAndroidIcon(
+//       notification.icon,
+//     );
+
 //     const fcmData = {
 //       notificationId: String(
 //         notification._id,
@@ -417,11 +278,17 @@
 //             : "normal",
 
 //           notification: {
+//             title: notification.title,
+//             body: notification.message,
+//             icon: androidIcon,
+//             color: "#7C3AED",
 //             channelId: "default",
 //             sound:
 //               preferences.soundEnabled === false
 //                 ? undefined
 //                 : "default",
+//             clickAction:
+//               "FLUTTER_NOTIFICATION_CLICK",
 //           },
 //         },
 //       });
@@ -607,11 +474,6 @@
 //     preferences,
 //   });
 
-//   /*
-//     Mongoose documents allow arbitrary properties only
-//     in memory. This is useful for API test responses but
-//     does not add pushResult to MongoDB.
-//   */
 //   notification.pushResult = pushResult;
 
 //   return notification;
@@ -741,16 +603,44 @@ const PRIORITIES = [
 ];
 
 /*
-  In-app icon names mapped to Android drawable resources.
-  Change the right-side values to match files in:
+  Android status-bar icons must be white artwork
+  on a transparent background.
+
+  These values refer to files in:
   android/app/src/main/res/drawable/
 */
 const ANDROID_NOTIFICATION_ICONS = {
-  bell: "ic_notification",
-  smartphone: "ic_notification",
-  "low-stock": "ic_notification",
-  "app-update": "ic_notification",
+  bell: "ic_stat_truebill",
+  smartphone: "ic_stat_truebill",
+  "low-stock": "ic_stat_truebill",
+  "sales-order": "ic_stat_truebill",
+  "purchase-order": "ic_stat_truebill",
+  payment: "ic_stat_truebill",
+  "payment-overdue": "ic_stat_truebill",
+  approval: "ic_stat_truebill",
+  customer: "ic_stat_truebill",
+  system: "ic_stat_truebill",
+  warning: "ic_stat_truebill",
 };
+
+/*
+  Android notification accent colors by type.
+  These are colors shown behind/with the white icon.
+*/
+const ANDROID_NOTIFICATION_COLORS = {
+  LOW_STOCK: "#F59E0B",
+  SALES_ORDER: "#2563EB",
+  PURCHASE_ORDER: "#059669",
+  PAYMENT_RECEIVED: "#16A34A",
+  PAYMENT_OVERDUE: "#DC2626",
+  APPROVAL_REQUIRED: "#0EA5E9",
+  NEW_CUSTOMER: "#6366F1",
+  SYSTEM: "#475569",
+  APP_UPDATE: "#7C3AED",
+};
+
+const DEFAULT_ANDROID_ICON = "ic_stat_truebill";
+const DEFAULT_ANDROID_COLOR = "#7C3AED";
 
 const normalizeType = (type) =>
   String(type || "")
@@ -771,7 +661,11 @@ const normalizePriority = (priority) => {
 
 const getAndroidIcon = (icon) =>
   ANDROID_NOTIFICATION_ICONS[icon] ||
-  "ic_notification";
+  DEFAULT_ANDROID_ICON;
+
+const getAndroidColor = (type) =>
+  ANDROID_NOTIFICATION_COLORS[type] ||
+  DEFAULT_ANDROID_COLOR;
 
 const toFcmStringData = (data = {}) => {
   const result = {};
@@ -957,6 +851,10 @@ const sendPush = async ({
       notification.icon,
     );
 
+    const androidColor = getAndroidColor(
+      notification.type,
+    );
+
     const fcmData = {
       notificationId: String(
         notification._id,
@@ -994,7 +892,7 @@ const sendPush = async ({
             title: notification.title,
             body: notification.message,
             icon: androidIcon,
-            color: "#7C3AED",
+            color: androidColor,
             channelId: "default",
             sound:
               preferences.soundEnabled === false
