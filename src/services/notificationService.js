@@ -591,6 +591,7 @@ const preferenceMap = {
   PAYMENT_OVERDUE: "paymentOverdue",
   APPROVAL_REQUIRED: "approvalRequired",
   NEW_CUSTOMER: "newCustomer",
+  NEW_SUPPLIER: "newSupplier",
   SYSTEM: "system",
   APP_UPDATE: "appUpdate",
 };

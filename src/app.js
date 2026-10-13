@@ -14,15 +14,12 @@ const notificationRoutes = require("./routes/notificationRoutes");
 const deviceTokenRoutes = require("./routes/deviceTokenRoutes");
 const notificationPreferenceRoutes = require("./routes/notificationPreferenceRoutes");
 const menuRoutes = require("./routes/menuRoutes");
-const appUpdateRoutes = require("./routes/appUpdateRoutes")
+const appUpdateRoutes = require("./routes/appUpdateRoutes");
 const accountingRoutes = require("./modules/accounting/accounting.routes");
 const productRoutes = require("./modules/products/product.routes");
-const stockMovementRoutes = require(
-  "./modules/stock-movements/stockMovement.routes"
-);
-const supplierRoutes = require(
-  "./modules/suppliers/supplier.routes"
-);
+const stockMovementRoutes = require("./modules/stock-movements/stockMovement.routes");
+const supplierRoutes = require("./modules/suppliers/supplier.routes");
+const ledgerGroupRoutes = require("./modules/accounting/ledger-groups/ledgerGroup.routes");
 const app = express();
 
 app.set("trust proxy", 1);
@@ -109,6 +106,12 @@ app.use("/api/accounting", accountingRoutes);
 app.use("/api/products", productRoutes);
 app.use("/api/stock-movements", stockMovementRoutes);
 app.use("/api/products", productRoutes);
+app.use("/api/suppliers", supplierRoutes);
+// app.use("/api/accounting/ledger-groups", ledgerGroupRoutes);
+app.use(
+  "/api/accounting/ledger-groups",
+  ledgerGroupRoutes,
+);
 app.use((req, res) =>
   res.status(404).json({
     success: false,

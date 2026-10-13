@@ -1,60 +1,13 @@
 const supplierService = require("./supplier.service");
 
-const getSuppliers = async (req, res, next) => {
-  try {
-    const result =
-      await supplierService.getSuppliers({
-        tenantId: req.tenantId,
-        page: req.query.page,
-        limit: req.query.limit,
-        search: req.query.search,
-        status: req.query.status,
-        supplierType: req.query.supplierType,
-        state: req.query.state,
-      });
-
-    return res.status(200).json({
-      success: true,
-
-      data: {
-        suppliers: result.suppliers,
-        pagination: result.pagination,
-      },
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-const getSupplierByCode = async (
-  req,
-  res,
-  next
-) => {
-  try {
-    const supplier =
-      await supplierService.getSupplierByCode({
-        tenantId: req.tenantId,
-        supplierCode: req.params.supplierCode,
-      });
-
-    return res.status(200).json({
-      success: true,
-      supplier,
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
 const createSupplier = async (req, res, next) => {
   try {
-    const supplier =
-      await supplierService.createSupplier({
-        tenantId: req.tenantId,
-        userId: req.user.userId,
-        body: req.body,
-      });
+    const supplier = await supplierService.createSupplier({
+      tenantId: req.tenantId,
+      userId: req.user.userId,
+      payload: req.body,
+      ipAddress: req.ip,
+    });
 
     return res.status(201).json({
       success: true,
@@ -66,15 +19,56 @@ const createSupplier = async (req, res, next) => {
   }
 };
 
-const updateSupplier = async (req, res, next) => {
+const getSuppliers = async (req, res, next) => {
+  try {
+    const result = await supplierService.getSuppliers({
+      tenantId: req.tenantId,
+      ...req.query,
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: result.data,
+      pagination: result.pagination,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const getSupplierByCode = async (req, res, next) => {
   try {
     const supplier =
-      await supplierService.updateSupplier({
+      await supplierService.getSupplierByCode({
         tenantId: req.tenantId,
-        userId: req.user.userId,
         supplierCode: req.params.supplierCode,
-        body: req.body,
       });
+
+    if (!supplier) {
+      return res.status(404).json({
+        success: false,
+        message: "Supplier not found",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      supplier,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const updateSupplier = async (req, res, next) => {
+  try {
+    const supplier = await supplierService.updateSupplier({
+      tenantId: req.tenantId,
+      userId: req.user.userId,
+      supplierCode: req.params.supplierCode,
+      payload: req.body,
+      ipAddress: req.ip,
+    });
 
     return res.status(200).json({
       success: true,
@@ -88,17 +82,16 @@ const updateSupplier = async (req, res, next) => {
 
 const deleteSupplier = async (req, res, next) => {
   try {
-    const supplier =
-      await supplierService.deleteSupplier({
-        tenantId: req.tenantId,
-        userId: req.user.userId,
-        supplierCode: req.params.supplierCode,
-      });
+    await supplierService.deleteSupplier({
+      tenantId: req.tenantId,
+      userId: req.user.userId,
+      supplierCode: req.params.supplierCode,
+      ipAddress: req.ip,
+    });
 
     return res.status(200).json({
       success: true,
       message: "Supplier deleted successfully",
-      supplier,
     });
   } catch (error) {
     next(error);
@@ -106,9 +99,9 @@ const deleteSupplier = async (req, res, next) => {
 };
 
 module.exports = {
+  createSupplier,
   getSuppliers,
   getSupplierByCode,
-  createSupplier,
   updateSupplier,
   deleteSupplier,
 };

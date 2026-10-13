@@ -1,8 +1,5 @@
 const express = require("express");
 
-const verifyToken = require("../../middleware/authMiddleware");
-const resolveTenant = require("../../middleware/tenantMiddleware");
-
 const {
   createSupplier,
   deleteSupplier,
@@ -11,27 +8,51 @@ const {
   updateSupplier,
 } = require("./supplier.controller");
 
+const {
+  validateCreateSupplier,
+  validateUpdateSupplier,
+} = require("./supplier.validation");
+
+const verifyToken = require("../../middleware/authMiddleware");
+const resolveTenant = require("../../middleware/tenantMiddleware");
+const requirePermission = require(
+  "../../middleware/permissionMiddleware",
+);
+
 const router = express.Router();
 
 router.use(verifyToken, resolveTenant);
 
-router.get("/", getSuppliers);
+router.get(
+  "/",
+  requirePermission("supplier.view"),
+  getSuppliers,
+);
 
-router.post("/", createSupplier);
+router.post(
+  "/",
+  requirePermission("supplier.create"),
+  validateCreateSupplier,
+  createSupplier,
+);
 
 router.get(
   "/code/:supplierCode",
-  getSupplierByCode
+  requirePermission("supplier.view"),
+  getSupplierByCode,
 );
 
 router.put(
   "/code/:supplierCode",
-  updateSupplier
+  requirePermission("supplier.update"),
+  validateUpdateSupplier,
+  updateSupplier,
 );
 
 router.delete(
   "/code/:supplierCode",
-  deleteSupplier
+  requirePermission("supplier.delete"),
+  deleteSupplier,
 );
 
 module.exports = router;

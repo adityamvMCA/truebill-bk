@@ -11,10 +11,18 @@ const ROLE_PERMISSIONS = {
     "customer.update",
     "customer.delete",
 
+    "supplier.view",
+    "supplier.create",
+    "supplier.update",
+    "supplier.delete",
+
     "ledger.view",
     "ledger.create",
     "ledger.update",
     "ledger.delete",
+
+    "ledgerGroup.view",
+    "ledgerGroup.create",
 
     "product.view",
     "product.create",
@@ -30,6 +38,10 @@ const ROLE_PERMISSIONS = {
     "customer.create",
     "customer.update",
 
+    "supplier.view",
+    "supplier.create",
+    "supplier.update",
+
     "ledger.view",
     "ledger.create",
     "ledger.update",
@@ -44,11 +56,17 @@ const ROLE_PERMISSIONS = {
     "customer.create",
     "customer.update",
 
+    "supplier.view",
+
     "product.view",
   ],
 
   purchase: [
     "customer.view",
+
+    "supplier.view",
+    "supplier.create",
+    "supplier.update",
 
     "product.view",
     "product.create",
@@ -62,22 +80,23 @@ const ROLE_PERMISSIONS = {
     "product.create",
     "product.update",
 
+    "supplier.view",
+
     "stock-movement.view",
     "stock-adjustment.create",
   ],
 
   viewer: [
     "customer.view",
+    "supplier.view",
+
     "ledger.view",
 
     "product.view",
     "stock-movement.view",
   ],
 };
-console.log(
-  "ROLE_PERMISSIONS LOADED:",
-  ROLE_PERMISSIONS.admin
-);
+
 module.exports = {
   PLATFORM_ROLES,
   ROLE_PERMISSIONS,

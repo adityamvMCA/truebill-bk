@@ -29,6 +29,7 @@ const notificationSchema = new mongoose.Schema(
         "NEW_CUSTOMER",
         "SYSTEM",
         "APP_UPDATE",
+          "NEW_SUPPLIER",
       ],
       index: true,
     },

@@ -14,14 +14,13 @@ const supplierSchema = new mongoose.Schema(
       required: true,
       trim: true,
       uppercase: true,
-      index: true,
     },
 
     supplierName: {
       type: String,
       required: true,
       trim: true,
-      index: true,
+      maxlength: 200,
     },
 
     supplierType: {
@@ -123,16 +122,34 @@ const supplierSchema = new mongoose.Schema(
       min: 0,
     },
 
+    /*
+      Existing unpaid amount owed by the tenant
+      to this supplier during migration.
+    */
     openingBalance: {
       type: Number,
       default: 0,
       min: 0,
     },
 
+    /*
+      Normal supplier payable is CREDIT:
+      the business owes the supplier.
+    */
     openingBalanceType: {
       type: String,
       enum: ["DEBIT", "CREDIT"],
       default: "CREDIT",
+    },
+
+    /*
+      Linked accounting ledger under Sundry Creditors.
+    */
+    ledgerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "AccountingLedger",
+      default: null,
+      index: true,
     },
 
     /*
@@ -174,14 +191,7 @@ const supplierSchema = new mongoose.Schema(
       default: null,
     },
 
-    createdBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      required: true,
-      index: true,
-    },
-
-    updatedBy: {
+    deletedBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       default: null,
@@ -202,24 +212,10 @@ supplierSchema.index(
   },
 );
 
-supplierSchema.index(
-  {
-    tenantId: 1,
-    supplierName: 1,
-  },
-  {
-    unique: true,
-    partialFilterExpression: {
-      isDeleted: false,
-    },
-  },
-);
-
 supplierSchema.index({
   tenantId: 1,
-  isDeleted: 1,
-  status: 1,
   supplierName: 1,
+  isDeleted: 1,
 });
 
 module.exports =
