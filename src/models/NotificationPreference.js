@@ -52,6 +52,16 @@ const notificationPreferenceSchema = new mongoose.Schema(
       default: true,
     },
 
+    purchaseBill: {
+      type: Boolean,
+      default: true,
+    },
+
+    newSupplier: {
+      type: Boolean,
+      default: true,
+    },
+
     system: {
       type: Boolean,
       default: true,

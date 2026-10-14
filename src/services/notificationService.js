@@ -8,6 +8,7 @@ const preferenceMap = {
   LOW_STOCK: "lowStock",
   SALES_ORDER: "salesOrder",
   PURCHASE_ORDER: "purchaseOrder",
+  PURCHASE_BILL: "purchaseBill",
   PAYMENT_RECEIVED: "paymentReceived",
   PAYMENT_OVERDUE: "paymentOverdue",
   APPROVAL_REQUIRED: "approvalRequired",
@@ -522,7 +523,8 @@ const createForTenant = async ({
       $in: userIds,
     },
   })
-    .select("userId")
+    // .select("userId")
+    .select(`userId ${preferenceKey}`)
     .lean();
 
   const enabledPreferenceUserIds = new Set(

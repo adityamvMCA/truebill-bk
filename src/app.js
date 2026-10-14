@@ -20,6 +20,10 @@ const productRoutes = require("./modules/products/product.routes");
 const stockMovementRoutes = require("./modules/stock-movements/stockMovement.routes");
 const supplierRoutes = require("./modules/suppliers/supplier.routes");
 const ledgerGroupRoutes = require("./modules/accounting/ledger-groups/ledgerGroup.routes");
+const purchaseBillRoutes = require(
+  "./modules/purchase-bills/purchaseBill.routes",
+);
+
 const app = express();
 
 app.set("trust proxy", 1);
@@ -107,6 +111,7 @@ app.use("/api/products", productRoutes);
 app.use("/api/stock-movements", stockMovementRoutes);
 app.use("/api/products", productRoutes);
 app.use("/api/suppliers", supplierRoutes);
+app.use("/api/purchase-bills", purchaseBillRoutes);
 // app.use("/api/accounting/ledger-groups", ledgerGroupRoutes);
 app.use(
   "/api/accounting/ledger-groups",
