@@ -16,6 +16,7 @@ const preferenceMap = {
   NEW_SUPPLIER: "newSupplier",
   SYSTEM: "system",
   APP_UPDATE: "appUpdate",
+  SUPPLIER_PAYMENT: "supplierPayment",
 };
 
 const PRIORITIES = ["LOW", "NORMAL", "HIGH", "CRITICAL"];

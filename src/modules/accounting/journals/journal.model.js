@@ -79,9 +79,14 @@ const journalSchema = new mongoose.Schema(
       required: true,
     },
 
+    // sourceType: {
+    //   type: String,
+    //   enum: ["PURCHASE_BILL"],
+    //   required: true,
+    // },
     sourceType: {
       type: String,
-      enum: ["PURCHASE_BILL"],
+      enum: ["PURCHASE_BILL", "SUPPLIER_PAYMENT", "MANUAL_JOURNAL"],
       required: true,
     },
 
@@ -151,10 +156,7 @@ const journalSchema = new mongoose.Schema(
   },
 );
 
-journalSchema.index(
-  { tenantId: 1, journalNumber: 1 },
-  { unique: true },
-);
+journalSchema.index({ tenantId: 1, journalNumber: 1 }, { unique: true });
 
 // Prevent posting the same purchase bill twice.
 journalSchema.index(

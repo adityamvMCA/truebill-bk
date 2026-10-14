@@ -1,7 +1,9 @@
 const mongoose = require("mongoose");
 
+
 const Journal = require("./journal.model");
 const Ledger = require("../ledgers/ledger.model");
+
 
 const createError = (message, statusCode = 400) => {
   const error = new Error(message);
@@ -9,13 +11,16 @@ const createError = (message, statusCode = 400) => {
   return error;
 };
 
+
 const normalizeText = (value) => String(value ?? "").trim();
+
 
 const validateObjectId = (value, fieldName) => {
   if (!mongoose.isObjectIdOrHexString(value)) {
     throw createError(`${fieldName} must be a valid ObjectId`);
   }
 };
+
 
 const validatePaise = (value, fieldName) => {
   if (!Number.isSafeInteger(value) || value < 0) {
@@ -24,8 +29,10 @@ const validatePaise = (value, fieldName) => {
     );
   }
 
+
   return value;
 };
+
 
 const rupeesToPaise = (value, fieldName = "Amount") => {
   if (
@@ -37,6 +44,7 @@ const rupeesToPaise = (value, fieldName = "Amount") => {
     throw createError(`${fieldName} must be a valid amount`);
   }
 
+
   const amount = Number(value);
 
   if (!Number.isFinite(amount) || amount < 0) {
@@ -46,10 +54,7 @@ const rupeesToPaise = (value, fieldName = "Amount") => {
   const scaled = amount * 100;
   const paise = Math.round(scaled);
 
-  if (
-    !Number.isSafeInteger(paise) ||
-    Math.abs(scaled - paise) > 0.000001
-  ) {
+  if (!Number.isSafeInteger(paise) || Math.abs(scaled - paise) > 0.000001) {
     throw createError(
       `${fieldName} must have at most two decimal places and be within range`,
     );
@@ -58,6 +63,7 @@ const rupeesToPaise = (value, fieldName = "Amount") => {
   return paise;
 };
 
+
 const paiseToRupees = (value) => {
   if (!Number.isSafeInteger(value)) {
     throw createError("Paise amount is outside the supported range");
@@ -65,6 +71,7 @@ const paiseToRupees = (value) => {
 
   return value / 100;
 };
+
 
 const normalizeLines = (lines) => {
   if (!Array.isArray(lines) || lines.length < 2 || lines.length > 500) {
@@ -108,6 +115,7 @@ const normalizeLines = (lines) => {
   });
 };
 
+
 const postJournal = async ({
   tenantId,
   userId,
@@ -126,13 +134,23 @@ const postJournal = async ({
     );
   }
 
+
   validateObjectId(tenantId, "tenantId");
   validateObjectId(userId, "userId");
   validateObjectId(sourceId, "sourceId");
 
-  if (sourceType !== "PURCHASE_BILL") {
+
+  const sourcePrefixes = {
+    PURCHASE_BILL: "PB",
+    SUPPLIER_PAYMENT: "SP",
+    MANUAL_JOURNAL: "MJ",
+  };
+
+
+  if (!Object.prototype.hasOwnProperty.call(sourcePrefixes, sourceType)) {
     throw createError("Unsupported journal source type");
   }
+
 
   const normalizedSourceNumber = normalizeText(sourceNumber).toUpperCase();
 
@@ -167,10 +185,7 @@ const postJournal = async ({
     throw createError("Journal totals exceed the supported range");
   }
 
-  if (
-    totalDebitPaise <= 0 ||
-    totalDebitPaise !== totalCreditPaise
-  ) {
+  if (totalDebitPaise <= 0 || totalDebitPaise !== totalCreditPaise) {
     throw createError("Total journal debits must equal total credits");
   }
 
@@ -205,9 +220,7 @@ const postJournal = async ({
     ledgers.map((ledger) => [String(ledger._id), ledger]),
   );
 
-  const missingLedgerIds = ledgerIds.filter(
-    (id) => !ledgerMap.has(id),
-  );
+  const missingLedgerIds = ledgerIds.filter((id) => !ledgerMap.has(id));
 
   if (missingLedgerIds.length) {
     throw createError(
@@ -223,9 +236,7 @@ const postJournal = async ({
     const ledger = ledgerMap.get(ledgerId);
 
     const delta =
-      (ledgerDeltas.get(ledgerId) || 0) +
-      line.debitPaise -
-      line.creditPaise;
+      (ledgerDeltas.get(ledgerId) || 0) + line.debitPaise - line.creditPaise;
 
     if (!Number.isSafeInteger(delta)) {
       throw createError("Ledger movement exceeds the supported range");
@@ -243,8 +254,6 @@ const postJournal = async ({
     };
   });
 
-  // Debit is positive; credit is negative internally.
-  // Store the final magnitude and direction in the existing ledger fields.
   for (const [ledgerId, deltaPaise] of ledgerDeltas) {
     const ledger = ledgerMap.get(ledgerId);
 
@@ -276,13 +285,11 @@ const postJournal = async ({
 
     if (!Number.isSafeInteger(nextSignedPaise)) {
       throw createError(
-        `Ledger ${ledger.code} balance exceeds the supported range`,
+        "Ledger balance exceeds the supported range",
       );
     }
 
-    ledger.currentBalance = paiseToRupees(
-      Math.abs(nextSignedPaise),
-    );
+    ledger.currentBalance = paiseToRupees(Math.abs(nextSignedPaise));
 
     ledger.currentBalanceType =
       nextSignedPaise > 0
@@ -296,9 +303,9 @@ const postJournal = async ({
     await ledger.save({ session });
   }
 
-  // Deterministic number; no additional sequence is needed for journals.
   const journalNumber =
-    `JV-PB-${String(sourceId)}`.toUpperCase();
+    `JV-${sourcePrefixes[sourceType]}-${String(sourceId)}`
+      .toUpperCase();
 
   const records = await Journal.create(
     [
@@ -318,11 +325,12 @@ const postJournal = async ({
         createdBy: userId,
       },
     ],
-    { session },
+    { session, ordered: true },
   );
 
   return records[0];
 };
+
 
 module.exports = {
   postJournal,

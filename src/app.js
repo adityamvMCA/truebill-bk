@@ -23,6 +23,10 @@ const ledgerGroupRoutes = require("./modules/accounting/ledger-groups/ledgerGrou
 const purchaseBillRoutes = require(
   "./modules/purchase-bills/purchaseBill.routes",
 );
+const supplierPaymentRoutes = require(
+  "./modules/supplier-payments/supplierPayment.routes",
+);
+
 
 const app = express();
 
@@ -117,6 +121,7 @@ app.use(
   "/api/accounting/ledger-groups",
   ledgerGroupRoutes,
 );
+app.use("/api/supplier-payments", supplierPaymentRoutes);
 app.use((req, res) =>
   res.status(404).json({
     success: false,

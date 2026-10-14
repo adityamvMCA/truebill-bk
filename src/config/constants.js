@@ -141,6 +141,10 @@ const ROLE_PERMISSIONS = {
     "purchaseBill.update",
     "purchaseBill.post",
     "purchaseBill.delete",
+
+    "supplierPayment.view",
+    "supplierPayment.create",
+    "supplierPayment.post",
   ],
 
   accountant: [

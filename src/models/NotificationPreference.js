@@ -81,7 +81,10 @@ const notificationPreferenceSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
-
+    supplierPayment: {
+      type: Boolean,
+      default: true,
+    },
     vibrationEnabled: {
       type: Boolean,
       default: true,
