@@ -3,9 +3,7 @@ const express = require("express");
 const verifyToken = require("../../middleware/authMiddleware");
 const resolveTenant = require("../../middleware/tenantMiddleware");
 
-const requirePermission = require(
-  "../../middleware/permissionMiddleware",
-);
+const requirePermission = require("../../middleware/permissionMiddleware");
 
 const {
   createPurchaseBill,

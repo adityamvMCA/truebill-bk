@@ -7,17 +7,10 @@ const objectId = Joi.string()
     "string.pattern.base": "{{#label}} must be a valid ObjectId",
   });
 
-const money = Joi.number()
-  .min(0)
-  .max(1000000000)
-  .precision(2)
-  .strict();
+const money = Joi.number().min(0).max(1000000000).precision(2).strict();
 
 const optionalText = (maxLength) =>
-  Joi.string()
-    .trim()
-    .max(maxLength)
-    .allow("", null);
+  Joi.string().trim().max(maxLength).allow("", null);
 
 const itemSchema = Joi.object({
   productId: objectId.required(),
@@ -39,48 +32,28 @@ const itemSchema = Joi.object({
     .default(0),
 
   // Omission uses the product's GST rate in the service.
-  gstRate: Joi.number()
-    .valid(0, 3, 5, 12, 18, 28)
-    .strict(),
+  gstRate: Joi.number().valid(0, 3, 5, 12, 18, 28).strict(),
 
   // Explicit choice; the service will not assume recoverable GST.
-  taxCreditEligible: Joi.boolean()
-    .strict()
-    .default(false),
+  taxCreditEligible: Joi.boolean().strict().default(false),
 }).unknown(false);
 
 const editableFields = {
   supplierId: objectId.required(),
 
-  supplierInvoiceNumber: Joi.string()
-    .trim()
-    .max(100)
-    .required(),
+  supplierInvoiceNumber: Joi.string().trim().max(100).required(),
 
-  billDate: Joi.date()
-    .iso()
-    .required(),
+  billDate: Joi.date().iso().required(),
 
-  dueDate: Joi.date()
-    .iso()
-    .min(Joi.ref("billDate"))
-    .required()
-    .messages({
-      "date.min": "Due date cannot be before bill date",
-    }),
+  dueDate: Joi.date().iso().min(Joi.ref("billDate")).required().messages({
+    "date.min": "Due date cannot be before bill date",
+  }),
 
-  paymentTerms: Joi.string()
-    .trim()
-    .max(100)
-    .default("Due on Receipt"),
+  paymentTerms: Joi.string().trim().max(100).default("Due on Receipt"),
 
-  taxMode: Joi.string()
-    .valid("NONE", "INTRA_STATE", "INTER_STATE")
-    .required(),
+  taxMode: Joi.string().valid("NONE", "INTRA_STATE", "INTER_STATE").required(),
 
-  updateStock: Joi.boolean()
-    .strict()
-    .default(false),
+  updateStock: Joi.boolean().strict().default(false),
 
   // Duplicate products are rejected to match your StockMovement
   // unique index: one PURCHASE movement per product per bill.
@@ -88,13 +61,13 @@ const editableFields = {
     .items(itemSchema)
     .min(1)
     .max(200)
-    .unique((first, second) =>
-      first.productId.toLowerCase() === second.productId.toLowerCase(),
+    .unique(
+      (first, second) =>
+        first.productId.toLowerCase() === second.productId.toLowerCase(),
     )
     .required()
     .messages({
-      "array.unique":
-        "A product can appear only once in a purchase bill",
+      "array.unique": "A product can appear only once in a purchase bill",
     }),
 
   notes: optionalText(1000),
@@ -114,31 +87,20 @@ const updatePurchaseBillSchema = Joi.object({
   ...editableFields,
 }).unknown(false);
 
-const postPurchaseBillSchema = Joi.object({})
-  .unknown(false);
+const postPurchaseBillSchema = Joi.object({}).unknown(false);
 
 const billParamsSchema = Joi.object({
-  billNumber: Joi.string()
-    .trim()
-    .uppercase()
-    .max(100)
-    .required(),
+  billNumber: Joi.string().trim().uppercase().max(100).required(),
 }).unknown(false);
 
 const listPurchaseBillsSchema = Joi.object({
-  search: Joi.string()
-    .trim()
-    .max(100)
-    .allow("")
-    .default(""),
+  search: Joi.string().trim().max(100).allow("").default(""),
 
   supplierId: objectId,
 
-  status: Joi.string()
-    .valid("DRAFT", "POSTED", "CANCELLED"),
+  status: Joi.string().valid("DRAFT", "POSTED", "CANCELLED"),
 
-  paymentStatus: Joi.string()
-    .valid("UNPAID", "PARTIALLY_PAID", "PAID"),
+  paymentStatus: Joi.string().valid("UNPAID", "PARTIALLY_PAID", "PAID"),
 
   fromDate: Joi.date().iso(),
 
@@ -149,24 +111,15 @@ const listPurchaseBillsSchema = Joi.object({
       then: Joi.date().min(Joi.ref("fromDate")),
     }),
 
-  page: Joi.number()
-    .integer()
-    .min(1)
-    .default(1),
+  page: Joi.number().integer().min(1).default(1),
 
-  limit: Joi.number()
-    .integer()
-    .min(1)
-    .max(100)
-    .default(20),
+  limit: Joi.number().integer().min(1).max(100).default(20),
 }).unknown(false);
 
-const validate = (schema, source = "body") =>
+const validate =
+  (schema, source = "body") =>
   (req, res, next) => {
-    const input =
-      source === "body"
-        ? req.body ?? {}
-        : req[source];
+    const input = source === "body" ? (req.body ?? {}) : req[source];
 
     const { error, value } = schema.validate(input, {
       abortEarly: false,
@@ -193,25 +146,13 @@ const validate = (schema, source = "body") =>
   };
 
 module.exports = {
-  validateCreatePurchaseBill: validate(
-    createPurchaseBillSchema,
-  ),
+  validateCreatePurchaseBill: validate(createPurchaseBillSchema),
 
-  validateUpdatePurchaseBill: validate(
-    updatePurchaseBillSchema,
-  ),
+  validateUpdatePurchaseBill: validate(updatePurchaseBillSchema),
 
-  validatePostPurchaseBill: validate(
-    postPurchaseBillSchema,
-  ),
+  validatePostPurchaseBill: validate(postPurchaseBillSchema),
 
-  validatePurchaseBillParams: validate(
-    billParamsSchema,
-    "params",
-  ),
+  validatePurchaseBillParams: validate(billParamsSchema, "params"),
 
-  validateListPurchaseBills: validate(
-    listPurchaseBillsSchema,
-    "query",
-  ),
+  validateListPurchaseBills: validate(listPurchaseBillsSchema, "query"),
 };

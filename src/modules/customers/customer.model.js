@@ -190,7 +190,7 @@ const customerSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
-  }
+  },
 );
 
 customerSchema.index(
@@ -200,7 +200,7 @@ customerSchema.index(
   },
   {
     unique: true,
-  }
+  },
 );
 
 customerSchema.index({
@@ -209,5 +209,4 @@ customerSchema.index({
 });
 
 module.exports =
-  mongoose.models.Customer ||
-  mongoose.model("Customer", customerSchema);
+  mongoose.models.Customer || mongoose.model("Customer", customerSchema);

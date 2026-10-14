@@ -20,13 +20,10 @@ const productRoutes = require("./modules/products/product.routes");
 const stockMovementRoutes = require("./modules/stock-movements/stockMovement.routes");
 const supplierRoutes = require("./modules/suppliers/supplier.routes");
 const ledgerGroupRoutes = require("./modules/accounting/ledger-groups/ledgerGroup.routes");
-const purchaseBillRoutes = require(
-  "./modules/purchase-bills/purchaseBill.routes",
-);
-const supplierPaymentRoutes = require(
-  "./modules/supplier-payments/supplierPayment.routes",
-);
-
+const purchaseBillRoutes = require("./modules/purchase-bills/purchaseBill.routes");
+const supplierPaymentRoutes = require("./modules/supplier-payments/supplierPayment.routes");
+const salesInvoiceRoutes = require("./modules/sales-invoices/salesInvoice.routes");
+const customerReceiptRoutes = require("./modules/customer-receipts/customerReceipt.routes");
 
 const app = express();
 
@@ -117,11 +114,11 @@ app.use("/api/products", productRoutes);
 app.use("/api/suppliers", supplierRoutes);
 app.use("/api/purchase-bills", purchaseBillRoutes);
 // app.use("/api/accounting/ledger-groups", ledgerGroupRoutes);
-app.use(
-  "/api/accounting/ledger-groups",
-  ledgerGroupRoutes,
-);
+app.use("/api/accounting/ledger-groups", ledgerGroupRoutes);
 app.use("/api/supplier-payments", supplierPaymentRoutes);
+app.use("/api/sales-invoices", salesInvoiceRoutes);
+app.use("/api/customer-receipts", customerReceiptRoutes);
+app.use("/api/customer-receipts", customerReceiptRoutes);
 app.use((req, res) =>
   res.status(404).json({
     success: false,

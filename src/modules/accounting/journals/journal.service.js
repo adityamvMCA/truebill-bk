@@ -1,9 +1,7 @@
 const mongoose = require("mongoose");
 
-
 const Journal = require("./journal.model");
 const Ledger = require("../ledgers/ledger.model");
-
 
 const createError = (message, statusCode = 400) => {
   const error = new Error(message);
@@ -11,16 +9,13 @@ const createError = (message, statusCode = 400) => {
   return error;
 };
 
-
 const normalizeText = (value) => String(value ?? "").trim();
-
 
 const validateObjectId = (value, fieldName) => {
   if (!mongoose.isObjectIdOrHexString(value)) {
     throw createError(`${fieldName} must be a valid ObjectId`);
   }
 };
-
 
 const validatePaise = (value, fieldName) => {
   if (!Number.isSafeInteger(value) || value < 0) {
@@ -29,10 +24,8 @@ const validatePaise = (value, fieldName) => {
     );
   }
 
-
   return value;
 };
-
 
 const rupeesToPaise = (value, fieldName = "Amount") => {
   if (
@@ -43,7 +36,6 @@ const rupeesToPaise = (value, fieldName = "Amount") => {
   ) {
     throw createError(`${fieldName} must be a valid amount`);
   }
-
 
   const amount = Number(value);
 
@@ -63,7 +55,6 @@ const rupeesToPaise = (value, fieldName = "Amount") => {
   return paise;
 };
 
-
 const paiseToRupees = (value) => {
   if (!Number.isSafeInteger(value)) {
     throw createError("Paise amount is outside the supported range");
@@ -71,7 +62,6 @@ const paiseToRupees = (value) => {
 
   return value / 100;
 };
-
 
 const normalizeLines = (lines) => {
   if (!Array.isArray(lines) || lines.length < 2 || lines.length > 500) {
@@ -115,7 +105,6 @@ const normalizeLines = (lines) => {
   });
 };
 
-
 const postJournal = async ({
   tenantId,
   userId,
@@ -134,23 +123,21 @@ const postJournal = async ({
     );
   }
 
-
   validateObjectId(tenantId, "tenantId");
   validateObjectId(userId, "userId");
   validateObjectId(sourceId, "sourceId");
-
 
   const sourcePrefixes = {
     PURCHASE_BILL: "PB",
     SUPPLIER_PAYMENT: "SP",
     MANUAL_JOURNAL: "MJ",
+    SALES_INVOICE: "SI",
+    CUSTOMER_RECEIPT: "CR",
   };
-
 
   if (!Object.prototype.hasOwnProperty.call(sourcePrefixes, sourceType)) {
     throw createError("Unsupported journal source type");
   }
-
 
   const normalizedSourceNumber = normalizeText(sourceNumber).toUpperCase();
 
@@ -284,9 +271,7 @@ const postJournal = async ({
     const nextSignedPaise = currentSignedPaise + deltaPaise;
 
     if (!Number.isSafeInteger(nextSignedPaise)) {
-      throw createError(
-        "Ledger balance exceeds the supported range",
-      );
+      throw createError("Ledger balance exceeds the supported range");
     }
 
     ledger.currentBalance = paiseToRupees(Math.abs(nextSignedPaise));
@@ -304,8 +289,7 @@ const postJournal = async ({
   }
 
   const journalNumber =
-    `JV-${sourcePrefixes[sourceType]}-${String(sourceId)}`
-      .toUpperCase();
+    `JV-${sourcePrefixes[sourceType]}-${String(sourceId)}`.toUpperCase();
 
   const records = await Journal.create(
     [
@@ -330,7 +314,6 @@ const postJournal = async ({
 
   return records[0];
 };
-
 
 module.exports = {
   postJournal,

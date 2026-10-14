@@ -8,22 +8,14 @@ const emptyToNull = (value, helpers) => {
   return value;
 };
 
-const optionalText = Joi.string()
-  .trim()
-  .allow(null, "")
-  .custom(emptyToNull);
+const optionalText = Joi.string().trim().allow(null, "").custom(emptyToNull);
 
 const createCustomerSchema = Joi.object({
-  customerName: Joi.string()
-    .trim()
-    .min(2)
-    .max(200)
-    .required()
-    .messages({
-      "string.empty": "Customer name is required",
-      "any.required": "Customer name is required",
-      "string.min": "Customer name must contain at least 2 characters",
-    }),
+  customerName: Joi.string().trim().min(2).max(200).required().messages({
+    "string.empty": "Customer name is required",
+    "any.required": "Customer name is required",
+    "string.min": "Customer name must contain at least 2 characters",
+  }),
 
   customerType: Joi.string()
     .valid("Business", "Individual")
@@ -87,43 +79,21 @@ const createCustomerSchema = Joi.object({
       "string.pattern.base": "Pincode must contain 6 digits",
     }),
 
-  country: Joi.string()
-    .trim()
-    .max(100)
-    .default("India"),
+  country: Joi.string().trim().max(100).default("India"),
 
-  paymentTerms: Joi.string()
-    .trim()
-    .max(100)
-    .default("Due on Receipt"),
+  paymentTerms: Joi.string().trim().max(100).default("Due on Receipt"),
 
-  creditLimit: Joi.number()
-    .min(0)
-    .precision(2)
-    .default(0),
+  creditLimit: Joi.number().min(0).precision(2).default(0),
 
-  creditDays: Joi.number()
-    .integer()
-    .min(0)
-    .default(0),
+  creditDays: Joi.number().integer().min(0).default(0),
 
-  openingBalance: Joi.number()
-    .min(0)
-    .precision(2)
-    .default(0),
+  openingBalance: Joi.number().min(0).precision(2).default(0),
 
-  openingBalanceType: Joi.string()
-    .valid("DEBIT", "CREDIT")
-    .default("DEBIT"),
+  openingBalanceType: Joi.string().valid("DEBIT", "CREDIT").default("DEBIT"),
 
-  priceList: Joi.string()
-    .trim()
-    .max(100)
-    .default("Standard"),
+  priceList: Joi.string().trim().max(100).default("Standard"),
 
-  status: Joi.string()
-    .valid("Active", "Inactive")
-    .default("Active"),
+  status: Joi.string().valid("Active", "Inactive").default("Active"),
 
   notes: optionalText,
 });

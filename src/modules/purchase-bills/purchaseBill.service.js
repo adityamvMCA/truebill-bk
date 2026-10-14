@@ -13,19 +13,13 @@ const {
   paiseToRupees,
 } = require("../accounting/journals/journal.service");
 
-const stockMovementService = require(
-  "../stock-movements/stockMovement.service",
-);
+const stockMovementService = require("../stock-movements/stockMovement.service");
 
 const AuditLog = require("../../models/AuditLog");
 
-const NotificationService = require(
-  "../../services/notificationService",
-);
+const NotificationService = require("../../services/notificationService");
 
-const {
-  getNextSequence,
-} = require("../../utils/sequenceGenerator");
+const { getNextSequence } = require("../../utils/sequenceGenerator");
 
 const createError = (message, statusCode = 400) => {
   const error = new Error(message);
@@ -33,11 +27,9 @@ const createError = (message, statusCode = 400) => {
   return error;
 };
 
-const normalizeText = (value) =>
-  String(value ?? "").trim();
+const normalizeText = (value) => String(value ?? "").trim();
 
-const normalizeCode = (value) =>
-  normalizeText(value).toUpperCase();
+const normalizeCode = (value) => normalizeText(value).toUpperCase();
 
 const validateObjectId = (value, fieldName) => {
   if (!mongoose.isObjectIdOrHexString(value)) {
@@ -53,8 +45,7 @@ const assertSafeAmount = (value, fieldName = "Amount") => {
   return value;
 };
 
-const addAmounts = (first, second) =>
-  assertSafeAmount(first + second);
+const addAmounts = (first, second) => assertSafeAmount(first + second);
 
 // Exact non-negative integer multiplication/division,
 // rounded half-up without floating-point intermediate products.
@@ -69,47 +60,31 @@ const multiplyDivide = (first, second, divisor) => {
   const numerator = BigInt(first) * BigInt(second);
   const denominator = BigInt(divisor);
 
-  const rounded =
-    (numerator + denominator / 2n) / denominator;
+  const rounded = (numerator + denominator / 2n) / denominator;
 
   return assertSafeAmount(Number(rounded));
 };
 
-const scaledNumber = ({
-  value,
-  scale,
-  minimum,
-  maximum,
-  fieldName,
-}) => {
+const scaledNumber = ({ value, scale, minimum, maximum, fieldName }) => {
   if (typeof value !== "number" || !Number.isFinite(value)) {
     throw createError(`${fieldName} must be a valid number`);
   }
 
   if (value < minimum || value > maximum) {
-    throw createError(
-      `${fieldName} must be between ${minimum} and ${maximum}`,
-    );
+    throw createError(`${fieldName} must be between ${minimum} and ${maximum}`);
   }
 
   const scaled = value * scale;
   const integer = Math.round(scaled);
 
-  if (
-    !Number.isSafeInteger(integer) ||
-    Math.abs(scaled - integer) > 0.000001
-  ) {
+  if (!Number.isSafeInteger(integer) || Math.abs(scaled - integer) > 0.000001) {
     throw createError(`${fieldName} has too many decimal places`);
   }
 
   return integer;
 };
 
-const getPurchaseLedger = async ({
-  tenantId,
-  ledgerId,
-  session,
-}) => {
+const getPurchaseLedger = async ({ tenantId, ledgerId, session }) => {
   const filter = {
     tenantId,
     isActive: true,
@@ -123,9 +98,7 @@ const getPurchaseLedger = async ({
     filter.code = "PURCHASE";
   }
 
-  const ledger = await Ledger.findOne(filter)
-    .session(session)
-    .lean();
+  const ledger = await Ledger.findOne(filter).session(session).lean();
 
   if (!ledger) {
     throw createError(
@@ -139,11 +112,7 @@ const getPurchaseLedger = async ({
   return ledger;
 };
 
-const getSupplier = async ({
-  tenantId,
-  supplierId,
-  session,
-}) => {
+const getSupplier = async ({ tenantId, supplierId, session }) => {
   validateObjectId(supplierId, "supplierId");
 
   const supplier = await Supplier.findOne({
@@ -174,28 +143,20 @@ const getSupplier = async ({
     .lean();
 
   if (!ledger) {
-    throw createError(
-      "The linked supplier ledger is missing or inactive",
-      409,
-    );
+    throw createError("The linked supplier ledger is missing or inactive", 409);
   }
 
   return supplier;
 };
 
-const calculateBill = async ({
-  tenantId,
-  payload,
-  session,
-}) => {
+const calculateBill = async ({ tenantId, payload, session }) => {
   const supplier = await getSupplier({
     tenantId,
     supplierId: payload.supplierId,
     session,
   });
 
-  const supplierInvoiceNumber =
-    normalizeText(payload.supplierInvoiceNumber);
+  const supplierInvoiceNumber = normalizeText(payload.supplierInvoiceNumber);
 
   if (!supplierInvoiceNumber || supplierInvoiceNumber.length > 100) {
     throw createError("A valid supplier invoice number is required");
@@ -217,9 +178,7 @@ const calculateBill = async ({
     throw createError("Due date cannot be before bill date");
   }
 
-  if (
-    !["NONE", "INTRA_STATE", "INTER_STATE"].includes(payload.taxMode)
-  ) {
+  if (!["NONE", "INTRA_STATE", "INTER_STATE"].includes(payload.taxMode)) {
     throw createError("Invalid taxMode");
   }
 
@@ -282,9 +241,7 @@ const calculateBill = async ({
   const items = [];
 
   for (const input of payload.items) {
-    const product = productMap.get(
-      String(input.productId).toLowerCase(),
-    );
+    const product = productMap.get(String(input.productId).toLowerCase());
 
     const quantityMilli = scaledNumber({
       value: input.quantity,
@@ -302,10 +259,7 @@ const calculateBill = async ({
       fieldName: `Discount for ${product.name}`,
     });
 
-    if (
-      typeof input.unitRate !== "number" ||
-      input.unitRate > 1000000000
-    ) {
+    if (typeof input.unitRate !== "number" || input.unitRate > 1000000000) {
       throw createError(`Invalid unit rate for ${product.name}`);
     }
 
@@ -354,11 +308,7 @@ const calculateBill = async ({
 
     const purchaseLedger = purchaseLedgerCache.get(cacheKey);
 
-    const grossAmountPaise = multiplyDivide(
-      unitRatePaise,
-      quantityMilli,
-      1000,
-    );
+    const grossAmountPaise = multiplyDivide(unitRatePaise, quantityMilli, 1000);
 
     const discountAmountPaise = multiplyDivide(
       grossAmountPaise,
@@ -366,14 +316,9 @@ const calculateBill = async ({
       10000,
     );
 
-    const taxableAmountPaise =
-      grossAmountPaise - discountAmountPaise;
+    const taxableAmountPaise = grossAmountPaise - discountAmountPaise;
 
-    const taxAmountPaise = multiplyDivide(
-      taxableAmountPaise,
-      gstRate,
-      100,
-    );
+    const taxAmountPaise = multiplyDivide(taxableAmountPaise, gstRate, 100);
 
     let cgstAmountPaise = 0;
     let sgstAmountPaise = 0;
@@ -387,10 +332,7 @@ const calculateBill = async ({
       igstAmountPaise = taxAmountPaise;
     }
 
-    const totalAmountPaise = addAmounts(
-      taxableAmountPaise,
-      taxAmountPaise,
-    );
+    const totalAmountPaise = addAmounts(taxableAmountPaise, taxAmountPaise);
 
     const item = {
       productId: product._id,
@@ -431,8 +373,7 @@ const calculateBill = async ({
     supplierGstNo: supplier.gstNo || null,
 
     supplierInvoiceNumber,
-    supplierInvoiceNumberNormalized:
-      supplierInvoiceNumber.toUpperCase(),
+    supplierInvoiceNumberNormalized: supplierInvoiceNumber.toUpperCase(),
 
     billDate,
     dueDate,
@@ -466,8 +407,7 @@ const ensureNoDuplicateInvoice = async ({
   const filter = {
     tenantId,
     supplierId: billData.supplierId,
-    supplierInvoiceNumberNormalized:
-      billData.supplierInvoiceNumberNormalized,
+    supplierInvoiceNumberNormalized: billData.supplierInvoiceNumberNormalized,
     isDeleted: false,
   };
 
@@ -488,11 +428,7 @@ const ensureNoDuplicateInvoice = async ({
   }
 };
 
-const getDraftForUpdate = async ({
-  tenantId,
-  billNumber,
-  session,
-}) => {
+const getDraftForUpdate = async ({ tenantId, billNumber, session }) => {
   const bill = await PurchaseBill.findOne({
     tenantId,
     billNumber: normalizeCode(billNumber),
@@ -539,11 +475,7 @@ const createAudit = async ({
   );
 };
 
-const getTaxLedger = async ({
-  tenantId,
-  code,
-  session,
-}) => {
+const getTaxLedger = async ({ tenantId, code, session }) => {
   const ledger = await Ledger.findOne({
     tenantId,
     code,
@@ -564,11 +496,7 @@ const getTaxLedger = async ({
   return ledger;
 };
 
-const buildJournalLines = async ({
-  tenantId,
-  bill,
-  session,
-}) => {
+const buildJournalLines = async ({ tenantId, bill, session }) => {
   const expenseAmounts = new Map();
 
   const recoverableTaxes = {
@@ -579,9 +507,7 @@ const buildJournalLines = async ({
 
   for (const item of bill.items) {
     const taxAmount =
-      item.cgstAmountPaise +
-      item.sgstAmountPaise +
-      item.igstAmountPaise;
+      item.cgstAmountPaise + item.sgstAmountPaise + item.igstAmountPaise;
 
     const expenseAmount = item.taxCreditEligible
       ? item.taxableAmountPaise
@@ -703,10 +629,7 @@ const postBillInTransaction = async ({
     .lean();
 
   if (products.length !== productIds.length) {
-    throw createError(
-      "One or more bill products are no longer active",
-      409,
-    );
+    throw createError("One or more bill products are no longer active", 409);
   }
 
   const productMap = new Map(
@@ -826,11 +749,7 @@ const postBillInTransaction = async ({
   return bill;
 };
 
-const notifyBillPosted = async ({
-  tenantId,
-  userId,
-  bill,
-}) => {
+const notifyBillPosted = async ({ tenantId, userId, bill }) => {
   try {
     await NotificationService.create({
       tenantId,
@@ -870,12 +789,7 @@ const translateDuplicateError = (error) => {
   return error;
 };
 
-const createPurchaseBill = async ({
-  tenantId,
-  userId,
-  payload,
-  ipAddress,
-}) => {
+const createPurchaseBill = async ({ tenantId, userId, payload, ipAddress }) => {
   const session = await mongoose.startSession();
 
   try {
@@ -894,10 +808,7 @@ const createPurchaseBill = async ({
         session,
       });
 
-      const billNumber = await getNextSequence(
-        "PB",
-        tenantId.toString(),
-      );
+      const billNumber = await getNextSequence("PB", tenantId.toString());
 
       const records = await PurchaseBill.create(
         [
@@ -1102,8 +1013,7 @@ const deletePurchaseBill = async ({
   }
 };
 
-const escapeRegex = (value) =>
-  value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 const getPurchaseBills = async ({
   tenantId,
@@ -1116,15 +1026,9 @@ const getPurchaseBills = async ({
   page = 1,
   limit = 20,
 }) => {
-  const currentPage = Math.max(
-    Math.floor(Number(page) || 1),
-    1,
-  );
+  const currentPage = Math.max(Math.floor(Number(page) || 1), 1);
 
-  const pageLimit = Math.min(
-    Math.max(Math.floor(Number(limit) || 20), 1),
-    100,
-  );
+  const pageLimit = Math.min(Math.max(Math.floor(Number(limit) || 20), 1), 100);
 
   const filter = {
     tenantId,
@@ -1193,10 +1097,7 @@ const getPurchaseBills = async ({
   };
 };
 
-const getPurchaseBillByNumber = async ({
-  tenantId,
-  billNumber,
-}) => {
+const getPurchaseBillByNumber = async ({ tenantId, billNumber }) => {
   const bill = await PurchaseBill.findOne({
     tenantId,
     billNumber: normalizeCode(billNumber),

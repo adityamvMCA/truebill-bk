@@ -86,7 +86,13 @@ const journalSchema = new mongoose.Schema(
     // },
     sourceType: {
       type: String,
-      enum: ["PURCHASE_BILL", "SUPPLIER_PAYMENT", "MANUAL_JOURNAL"],
+      enum: [
+        "PURCHASE_BILL",
+        "SUPPLIER_PAYMENT",
+        "MANUAL_JOURNAL",
+        "SALES_INVOICE",
+        "CUSTOMER_RECEIPT",
+      ],
       required: true,
     },
 
