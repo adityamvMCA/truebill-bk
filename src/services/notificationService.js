@@ -1,12 +1,8 @@
 const Notification = require("../models/Notification");
-const NotificationPreference = require(
-  "../models/NotificationPreference",
-);
+const NotificationPreference = require("../models/NotificationPreference");
 const DeviceToken = require("../models/DeviceToken");
-
-const {
-  getMessaging,
-} = require("firebase-admin/messaging");
+const User = require("../models/User");
+const { getMessaging } = require("firebase-admin/messaging");
 
 const preferenceMap = {
   LOW_STOCK: "lowStock",
@@ -21,12 +17,7 @@ const preferenceMap = {
   APP_UPDATE: "appUpdate",
 };
 
-const PRIORITIES = [
-  "LOW",
-  "NORMAL",
-  "HIGH",
-  "CRITICAL",
-];
+const PRIORITIES = ["LOW", "NORMAL", "HIGH", "CRITICAL"];
 
 /*
   Android status-bar icons must be white artwork
@@ -74,35 +65,24 @@ const normalizeType = (type) =>
     .toUpperCase();
 
 const normalizePriority = (priority) => {
-  const normalized = String(
-    priority || "NORMAL",
-  )
+  const normalized = String(priority || "NORMAL")
     .trim()
     .toUpperCase();
 
-  return PRIORITIES.includes(normalized)
-    ? normalized
-    : "NORMAL";
+  return PRIORITIES.includes(normalized) ? normalized : "NORMAL";
 };
 
 const getAndroidIcon = (icon) =>
-  ANDROID_NOTIFICATION_ICONS[icon] ||
-  DEFAULT_ANDROID_ICON;
+  ANDROID_NOTIFICATION_ICONS[icon] || DEFAULT_ANDROID_ICON;
 
 const getAndroidColor = (type) =>
-  ANDROID_NOTIFICATION_COLORS[type] ||
-  DEFAULT_ANDROID_COLOR;
+  ANDROID_NOTIFICATION_COLORS[type] || DEFAULT_ANDROID_COLOR;
 
 const toFcmStringData = (data = {}) => {
   const result = {};
 
-  for (const [key, value] of Object.entries(
-    data || {},
-  )) {
-    if (
-      value === undefined ||
-      value === null
-    ) {
+  for (const [key, value] of Object.entries(data || {})) {
+    if (value === undefined || value === null) {
       continue;
     }
 
@@ -111,10 +91,7 @@ const toFcmStringData = (data = {}) => {
       continue;
     }
 
-    if (
-      typeof value === "number" ||
-      typeof value === "boolean"
-    ) {
+    if (typeof value === "number" || typeof value === "boolean") {
       result[key] = String(value);
       continue;
     }
@@ -134,33 +111,24 @@ const isInvalidTokenError = (errorCode) =>
 const shouldSendHighPriority = (priority) =>
   ["HIGH", "CRITICAL"].includes(priority);
 
-const getPreferences = async (
-  tenantId,
-  userId,
-) => {
-  let preferences =
-    await NotificationPreference.findOne({
+const getPreferences = async (tenantId, userId) => {
+  let preferences = await NotificationPreference.findOne({
+    tenantId,
+    userId,
+  });
+
+  if (!preferences) {
+    preferences = await NotificationPreference.create({
       tenantId,
       userId,
     });
-
-  if (!preferences) {
-    preferences =
-      await NotificationPreference.create({
-        tenantId,
-        userId,
-      });
   }
 
   return preferences;
 };
 
-const isCategoryEnabled = (
-  preferences,
-  type,
-) => {
-  const preferenceField =
-    preferenceMap[type];
+const isCategoryEnabled = (preferences, type) => {
+  const preferenceField = preferenceMap[type];
 
   if (!preferenceField) {
     return true;
@@ -169,9 +137,7 @@ const isCategoryEnabled = (
   return preferences[preferenceField] !== false;
 };
 
-const deactivateInvalidTokens = async (
-  tokens,
-) => {
+const deactivateInvalidTokens = async (tokens) => {
   if (!tokens.length) {
     return;
   }
@@ -190,9 +156,7 @@ const deactivateInvalidTokens = async (
   );
 };
 
-const updateLastUsedTokens = async (
-  tokens,
-) => {
+const updateLastUsedTokens = async (tokens) => {
   if (!tokens.length) {
     return;
   }
@@ -211,15 +175,10 @@ const updateLastUsedTokens = async (
   );
 };
 
-const sendPush = async ({
-  notification,
-  preferences,
-}) => {
+const sendPush = async ({ notification, preferences }) => {
   try {
     if (preferences.pushEnabled === false) {
-      console.log(
-        `Push disabled for user ${notification.userId}`,
-      );
+      console.log(`Push disabled for user ${notification.userId}`);
 
       return {
         skipped: true,
@@ -230,21 +189,16 @@ const sendPush = async ({
       };
     }
 
-    const deviceTokens =
-      await DeviceToken.find({
-        tenantId: notification.tenantId,
-        userId: notification.userId,
-        isActive: true,
-      })
-        .select(
-          "token platform isActive lastUsedAt",
-        )
-        .lean();
+    const deviceTokens = await DeviceToken.find({
+      tenantId: notification.tenantId,
+      userId: notification.userId,
+      isActive: true,
+    })
+      .select("token platform isActive lastUsedAt")
+      .lean();
 
     if (!deviceTokens.length) {
-      console.log(
-        `No active device tokens for user ${notification.userId}`,
-      );
+      console.log(`No active device tokens for user ${notification.userId}`);
 
       return {
         skipped: true,
@@ -255,9 +209,7 @@ const sendPush = async ({
       };
     }
 
-    const tokens = deviceTokens
-      .map((device) => device.token)
-      .filter(Boolean);
+    const tokens = deviceTokens.map((device) => device.token).filter(Boolean);
 
     if (!tokens.length) {
       return {
@@ -269,25 +221,15 @@ const sendPush = async ({
       };
     }
 
-    const priority = normalizePriority(
-      notification.priority,
-    );
+    const priority = normalizePriority(notification.priority);
 
-    const androidIcon = getAndroidIcon(
-      notification.icon,
-    );
+    const androidIcon = getAndroidIcon(notification.icon);
 
-    const androidColor = getAndroidColor(
-      notification.type,
-    );
+    const androidColor = getAndroidColor(notification.type);
 
     const fcmData = {
-      notificationId: String(
-        notification._id,
-      ),
-      tenantId: String(
-        notification.tenantId,
-      ),
+      notificationId: String(notification._id),
+      tenantId: String(notification.tenantId),
       userId: String(notification.userId),
       type: String(notification.type),
       route: notification.route || "",
@@ -296,39 +238,30 @@ const sendPush = async ({
       ...toFcmStringData(notification.data),
     };
 
-    const response =
-      await getMessaging().sendEachForMulticast({
-        tokens,
+    const response = await getMessaging().sendEachForMulticast({
+      tokens,
+
+      notification: {
+        title: notification.title,
+        body: notification.message,
+      },
+
+      data: fcmData,
+
+      android: {
+        priority: shouldSendHighPriority(priority) ? "high" : "normal",
 
         notification: {
           title: notification.title,
           body: notification.message,
+          icon: androidIcon,
+          color: androidColor,
+          channelId: "default",
+          sound: preferences.soundEnabled === false ? undefined : "default",
+          clickAction: "FLUTTER_NOTIFICATION_CLICK",
         },
-
-        data: fcmData,
-
-        android: {
-          priority: shouldSendHighPriority(
-            priority,
-          )
-            ? "high"
-            : "normal",
-
-          notification: {
-            title: notification.title,
-            body: notification.message,
-            icon: androidIcon,
-            color: androidColor,
-            channelId: "default",
-            sound:
-              preferences.soundEnabled === false
-                ? undefined
-                : "default",
-            clickAction:
-              "FLUTTER_NOTIFICATION_CLICK",
-          },
-        },
-      });
+      },
+    });
 
     const invalidTokens = [];
 
@@ -336,45 +269,29 @@ const sendPush = async ({
       .map((result, index) => {
         const token = tokens[index];
 
-        if (
-          !result.success &&
-          isInvalidTokenError(
-            result.error?.code,
-          )
-        ) {
+        if (!result.success && isInvalidTokenError(result.error?.code)) {
           invalidTokens.push(token);
         }
 
         return {
-          platform:
-            deviceTokens[index]?.platform ||
-            null,
+          platform: deviceTokens[index]?.platform || null,
           success: result.success,
-          errorCode:
-            result.error?.code || null,
-          errorMessage:
-            result.error?.message || null,
+          errorCode: result.error?.code || null,
+          errorMessage: result.error?.message || null,
         };
       })
       .filter((result) => !result.success);
 
     if (invalidTokens.length) {
-      await deactivateInvalidTokens(
-        invalidTokens,
-      );
+      await deactivateInvalidTokens(invalidTokens);
     }
 
-    const successfulTokens =
-      response.responses
-        .map((result, index) =>
-          result.success ? tokens[index] : null,
-        )
-        .filter(Boolean);
+    const successfulTokens = response.responses
+      .map((result, index) => (result.success ? tokens[index] : null))
+      .filter(Boolean);
 
     if (successfulTokens.length) {
-      await updateLastUsedTokens(
-        successfulTokens,
-      );
+      await updateLastUsedTokens(successfulTokens);
     }
 
     const summary = {
@@ -382,15 +299,11 @@ const sendPush = async ({
       tokensFound: tokens.length,
       successCount: response.successCount,
       failureCount: response.failureCount,
-      invalidTokensDeactivated:
-        invalidTokens.length,
+      invalidTokensDeactivated: invalidTokens.length,
       failures,
     };
 
-    console.log(
-      "FCM push result:",
-      JSON.stringify(summary, null, 2),
-    );
+    console.log("FCM push result:", JSON.stringify(summary, null, 2));
 
     return summary;
   } catch (error) {
@@ -408,9 +321,7 @@ const sendPush = async ({
       skipped: false,
       error: true,
       errorCode: error?.code || null,
-      errorMessage:
-        error?.message ||
-        "Unknown FCM delivery error",
+      errorMessage: error?.message || "Unknown FCM delivery error",
       tokensFound: 0,
       successCount: 0,
       failureCount: 0,
@@ -441,43 +352,26 @@ const create = async ({
   const normalizedType = normalizeType(type);
 
   if (!normalizedType) {
-    throw new Error(
-      "Notification type is required",
-    );
+    throw new Error("Notification type is required");
   }
 
   if (!preferenceMap[normalizedType]) {
-    throw new Error(
-      `Invalid notification type: ${normalizedType}`,
-    );
+    throw new Error(`Invalid notification type: ${normalizedType}`);
   }
 
   if (!String(title || "").trim()) {
-    throw new Error(
-      "Notification title is required",
-    );
+    throw new Error("Notification title is required");
   }
 
   if (!String(message || "").trim()) {
-    throw new Error(
-      "Notification message is required",
-    );
+    throw new Error("Notification message is required");
   }
 
-  const normalizedPriority =
-    normalizePriority(priority);
+  const normalizedPriority = normalizePriority(priority);
 
-  const preferences = await getPreferences(
-    tenantId,
-    userId,
-  );
+  const preferences = await getPreferences(tenantId, userId);
 
-  if (
-    !isCategoryEnabled(
-      preferences,
-      normalizedType,
-    )
-  ) {
+  if (!isCategoryEnabled(preferences, normalizedType)) {
     console.log(
       `Notification blocked by category preference: ${normalizedType}`,
     );
@@ -485,21 +379,17 @@ const create = async ({
     return null;
   }
 
-  const notification =
-    await Notification.create({
-      tenantId,
-      userId,
-      type: normalizedType,
-      title: String(title).trim(),
-      message: String(message).trim(),
-      icon: String(icon || "bell").trim(),
-      priority: normalizedPriority,
-      route:
-        route && String(route).trim()
-          ? String(route).trim()
-          : null,
-      data: data || {},
-    });
+  const notification = await Notification.create({
+    tenantId,
+    userId,
+    type: normalizedType,
+    title: String(title).trim(),
+    message: String(message).trim(),
+    icon: String(icon || "bell").trim(),
+    priority: normalizedPriority,
+    route: route && String(route).trim() ? String(route).trim() : null,
+    data: data || {},
+  });
 
   /*
     Push delivery happens after database creation.
@@ -517,10 +407,7 @@ const create = async ({
 };
 
 const createMany = async (notifications) => {
-  if (
-    !Array.isArray(notifications) ||
-    notifications.length === 0
-  ) {
+  if (!Array.isArray(notifications) || notifications.length === 0) {
     return [];
   }
 
@@ -545,13 +432,9 @@ const sendAppUpdateNotification = async ({
   updateRequired,
   downloadUrl,
 }) => {
-  const requiredUpdate =
-    updateRequired === true ||
-    updateRequired === "true";
+  const requiredUpdate = updateRequired === true || updateRequired === "true";
 
-  const title = requiredUpdate
-    ? "Update required"
-    : "New app update available";
+  const title = requiredUpdate ? "Update required" : "New app update available";
 
   const message = requiredUpdate
     ? `TrueBill version ${latestVersion} is required. Please update to continue.`
@@ -564,9 +447,7 @@ const sendAppUpdateNotification = async ({
     title,
     message,
     icon: "smartphone",
-    priority: requiredUpdate
-      ? "CRITICAL"
-      : "NORMAL",
+    priority: requiredUpdate ? "CRITICAL" : "NORMAL",
     route: "/app-update",
     data: {
       platform: "android",
@@ -582,13 +463,9 @@ const sendAppUpdateNotification = async ({
     disabled normal app-update notifications.
   */
   if (requiredUpdate) {
-    const notification =
-      await Notification.create(payload);
+    const notification = await Notification.create(payload);
 
-    const preferences = await getPreferences(
-      tenantId,
-      userId,
-    );
+    const preferences = await getPreferences(tenantId, userId);
 
     const pushResult = await sendPush({
       notification,
@@ -617,9 +494,7 @@ const createForTenant = async ({
   const preferenceKey = preferenceMap[type];
 
   if (!preferenceKey) {
-    throw new Error(
-      `Unsupported notification type: ${type}`,
-    );
+    throw new Error(`Unsupported notification type: ${type}`);
   }
 
   const users = await User.find({
@@ -652,12 +527,8 @@ const createForTenant = async ({
 
   const enabledPreferenceUserIds = new Set(
     preferences
-      .filter(
-        (preference) => preference[preferenceKey] !== false,
-      )
-      .map((preference) =>
-        preference.userId.toString(),
-      ),
+      .filter((preference) => preference[preferenceKey] !== false)
+      .map((preference) => preference.userId.toString()),
   );
 
   /*
@@ -665,9 +536,7 @@ const createForTenant = async ({
     the notification because defaults are true.
   */
   const usersWithPreference = new Set(
-    preferences.map((preference) =>
-      preference.userId.toString(),
-    ),
+    preferences.map((preference) => preference.userId.toString()),
   );
 
   const finalUserIds = userIds.filter((id) => {
@@ -685,6 +554,21 @@ const createForTenant = async ({
     };
   }
 
+  // const notifications = await Notification.insertMany(
+  //   finalUserIds.map((recipientUserId) => ({
+  //     tenantId,
+  //     userId: recipientUserId,
+  //     type,
+  //     title,
+  //     message,
+  //     icon,
+  //     priority,
+  //     route,
+  //     data,
+  //     isRead: false,
+  //     readAt: null,
+  //   })),
+  // );
   const notifications = await Notification.insertMany(
     finalUserIds.map((recipientUserId) => ({
       tenantId,
@@ -701,6 +585,25 @@ const createForTenant = async ({
     })),
   );
 
+  // Optional: send push notifications without breaking the API
+  for (const notification of notifications) {
+    try {
+      const preferences = await getPreferences(tenantId, notification.userId);
+
+      const pushResult = await sendPush({
+        notification,
+        preferences,
+      });
+
+      notification.pushResult = pushResult;
+      await Notification.updateOne(
+        { _id: notification._id },
+        { $set: { pushResult } },
+      );
+    } catch (error) {
+      console.error("Tenant push delivery failed:", error?.message || error);
+    }
+  }
   return {
     created: notifications.length,
     notifications,
@@ -712,5 +615,5 @@ module.exports = {
   createMany,
   sendAppUpdateNotification,
   sendPush,
-  createForTenant
+  createForTenant,
 };
