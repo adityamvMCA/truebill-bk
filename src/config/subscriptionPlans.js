@@ -6,6 +6,7 @@ const FEATURE_TREE = {
     "sales.quotations",
     "sales.orders",
     "sales.invoices",
+    "sales.customerReceipts",
     "sales.creditNotes",
     "sales.reports",
   ],
@@ -19,6 +20,7 @@ const FEATURE_TREE = {
     "purchase.invoices",
     "purchase.debitNotes",
     "purchase.reports",
+    "purchase.supplierPayments"
   ],
 
   inventory: [
@@ -39,11 +41,7 @@ const FEATURE_TREE = {
     "accounting.reports",
   ],
 
-  gst: [
-    "gst.summary",
-    "gst.gstrReports",
-    "gst.taxConfiguration",
-  ],
+  gst: ["gst.summary", "gst.gstrReports", "gst.taxConfiguration"],
 
   bank: [
     "bank.accounts",
@@ -67,12 +65,7 @@ const FEATURE_TREE = {
     "production.reports",
   ],
 
-  hr: [
-    "hr.employees",
-    "hr.attendance",
-    "hr.leave",
-    "hr.payroll",
-  ],
+  hr: ["hr.employees", "hr.attendance", "hr.leave", "hr.payroll"],
 
   assets: [
     "assets.list",
@@ -81,23 +74,11 @@ const FEATURE_TREE = {
     "assets.reports",
   ],
 
-  crm: [
-    "crm.leads",
-    "crm.opportunities",
-    "crm.followups",
-  ],
+  crm: ["crm.leads", "crm.opportunities", "crm.followups"],
 
-  projects: [
-    "projects.list",
-    "projects.tasks",
-    "projects.timesheets",
-  ],
+  projects: ["projects.list", "projects.tasks", "projects.timesheets"],
 
-  quality: [
-    "quality.checks",
-    "quality.inspections",
-    "quality.reports",
-  ],
+  quality: ["quality.checks", "quality.inspections", "quality.reports"],
 
   reports: [
     "reports.sales",
@@ -192,12 +173,7 @@ const PLANS = {
     includedUsers: 25,
     extraUserPrice: 299,
     inherits: ["standard"],
-    features: [
-      "projects",
-      "quality",
-      "hr",
-      "settings.api",
-    ],
+    features: ["projects", "quality", "hr", "settings.api"],
     limits: {
       users: 25,
       invoices: null,

@@ -76,18 +76,24 @@ const ROLE_PERMISSIONS = {
     "purchaseBill.post",
   ],
 
-  sales: [
-    "customer.view",
-    "customer.create",
-    "customer.update",
+sales: [
+  "customer.view",
+  "customer.create",
+  "customer.update",
 
-    "supplier.view",
+  "supplier.view",
 
-    "product.view",
+  "product.view",
 
-    "salesInvoice.view",
-    "salesInvoice.create",
-  ],
+  "salesInvoice.view",
+  "salesInvoice.create",
+
+  "customerReceipt.view",
+  "customerReceipt.create",
+  "customerReceipt.post",
+
+  "ledger.view",
+],
 
   purchase: [
     "customer.view",
