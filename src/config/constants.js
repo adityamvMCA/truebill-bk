@@ -51,6 +51,11 @@ const ROLE_PERMISSIONS = {
     "customerReceipt.view",
     "customerReceipt.create",
     "customerReceipt.post",
+    "bank.view",
+    "bank.create",
+    "bank.update",
+    "customerOutstanding.view",
+    "supplierOutstanding.view",
   ],
 
   accountant: [
@@ -74,26 +79,32 @@ const ROLE_PERMISSIONS = {
     "purchaseBill.create",
     "purchaseBill.update",
     "purchaseBill.post",
+    "bank.view",
+    "bank.create",
+    "bank.update",
+    "accounting.banks",
+    "customerOutstanding.view",
+    "supplierOutstanding.view",
   ],
 
-sales: [
-  "customer.view",
-  "customer.create",
-  "customer.update",
+  sales: [
+    "customer.view",
+    "customer.create",
+    "customer.update",
 
-  "supplier.view",
+    "supplier.view",
 
-  "product.view",
+    "product.view",
 
-  "salesInvoice.view",
-  "salesInvoice.create",
+    "salesInvoice.view",
+    "salesInvoice.create",
 
-  "customerReceipt.view",
-  "customerReceipt.create",
-  "customerReceipt.post",
+    "customerReceipt.view",
+    "customerReceipt.create",
+    "customerReceipt.post",
 
-  "ledger.view",
-],
+    "ledger.view",
+  ],
 
   purchase: [
     "customer.view",

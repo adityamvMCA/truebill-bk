@@ -24,7 +24,10 @@ const purchaseBillRoutes = require("./modules/purchase-bills/purchaseBill.routes
 const supplierPaymentRoutes = require("./modules/supplier-payments/supplierPayment.routes");
 const salesInvoiceRoutes = require("./modules/sales-invoices/salesInvoice.routes");
 const customerReceiptRoutes = require("./modules/customer-receipts/customerReceipt.routes");
-
+const bankRoutes = require("./modules/banks/bank.routes");
+const outstandingRoutes = require(
+  "./modules/outstanding/outstanding.routes",
+);
 const app = express();
 
 app.set("trust proxy", 1);
@@ -119,6 +122,8 @@ app.use("/api/supplier-payments", supplierPaymentRoutes);
 app.use("/api/sales-invoices", salesInvoiceRoutes);
 app.use("/api/customer-receipts", customerReceiptRoutes);
 app.use("/api/customer-receipts", customerReceiptRoutes);
+app.use("/api/banks", bankRoutes);
+app.use("/api/outstanding", outstandingRoutes);
 app.use((req, res) =>
   res.status(404).json({
     success: false,
