@@ -3,6 +3,7 @@ const mongoose = require("mongoose");
 const Journal = require("./journal.model");
 const Ledger = require("../ledgers/ledger.model");
 
+const { getNextSequence } = require("../../../utils/sequenceGenerator");
 const createError = (message, statusCode = 400) => {
   const error = new Error(message);
   error.statusCode = statusCode;
@@ -288,8 +289,10 @@ const postJournal = async ({
     await ledger.save({ session });
   }
 
-  const journalNumber =
-    `JV-${sourcePrefixes[sourceType]}-${String(sourceId)}`.toUpperCase();
+  // const journalNumber =
+  //   `JV-${sourcePrefixes[sourceType]}-${String(sourceId)}`.toUpperCase();
+
+  const journalNumber = await getNextSequence("JV", tenantId.toString());
 
   const records = await Journal.create(
     [

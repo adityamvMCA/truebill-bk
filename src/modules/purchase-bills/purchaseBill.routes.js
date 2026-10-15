@@ -12,6 +12,7 @@ const {
   updatePurchaseBill,
   postPurchaseBill,
   deletePurchaseBill,
+  getPurchaseBillPayments,
 } = require("./purchaseBill.controller");
 
 const {
@@ -20,6 +21,7 @@ const {
   validatePostPurchaseBill,
   validatePurchaseBillParams,
   validateListPurchaseBills,
+  validatePurchaseBillPaymentsQuery,
 } = require("./purchaseBill.validation");
 
 const router = express.Router();
@@ -79,6 +81,14 @@ router.delete(
   requirePermission("purchaseBill.delete"),
   validatePurchaseBillParams,
   deletePurchaseBill,
+);
+router.get(
+  "/number/:billNumber/payments",
+  requirePermission("purchaseBill.view"),
+  requirePermission("supplierPayment.view"),
+  validatePurchaseBillParams,
+  validatePurchaseBillPaymentsQuery,
+  getPurchaseBillPayments,
 );
 
 module.exports = router;

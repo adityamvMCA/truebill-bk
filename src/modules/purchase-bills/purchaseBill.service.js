@@ -6,7 +6,7 @@ const Supplier = require("../suppliers/supplier.model");
 const Product = require("../products/product.model");
 
 const Ledger = require("../accounting/ledgers/ledger.model");
-
+const SupplierPayment = require("../supplier-payments/supplierPayment.model");
 const {
   postJournal,
   rupeesToPaise,
@@ -1111,6 +1111,78 @@ const getPurchaseBillByNumber = async ({ tenantId, billNumber }) => {
   return bill;
 };
 
+const getPurchaseBillPayments = async ({
+  tenantId,
+  billNumber,
+  page = 1,
+  limit = 20,
+}) => {
+  const bill = await PurchaseBill.findOne({
+    tenantId,
+    billNumber: normalizeCode(billNumber),
+    isDeleted: false,
+  })
+    .select("_id billNumber")
+    .lean();
+
+  if (!bill) {
+    throw createError("Purchase bill not found", 404);
+  }
+
+  const currentPage = Math.max(Math.floor(Number(page) || 1), 1);
+
+  const pageLimit = Math.min(Math.max(Math.floor(Number(limit) || 20), 1), 100);
+
+  const filter = {
+    tenantId,
+    "allocations.purchaseBillId": bill._id,
+  };
+
+  const [payments, total] = await Promise.all([
+    SupplierPayment.find(filter)
+      .select(
+        "paymentNumber paymentDate paymentMethod " +
+          "paymentLedgerName referenceNumber status " +
+          "allocations createdAt",
+      )
+      .sort({ paymentDate: -1, createdAt: -1, _id: -1 })
+      .skip((currentPage - 1) * pageLimit)
+      .limit(pageLimit)
+      .lean(),
+
+    SupplierPayment.countDocuments(filter),
+  ]);
+
+  const data = payments.map((payment) => {
+    const allocatedAmountPaise = payment.allocations
+      .filter(
+        (allocation) => String(allocation.purchaseBillId) === String(bill._id),
+      )
+      .reduce((sum, allocation) => sum + allocation.amountPaise, 0);
+
+    return {
+      _id: payment._id,
+      paymentNumber: payment.paymentNumber,
+      paymentDate: payment.paymentDate,
+      paymentMethod: payment.paymentMethod,
+      paymentLedgerName: payment.paymentLedgerName,
+      referenceNumber: payment.referenceNumber,
+      status: payment.status,
+      allocatedAmountPaise,
+    };
+  });
+
+  return {
+    data,
+    pagination: {
+      page: currentPage,
+      limit: pageLimit,
+      total,
+      totalPages: Math.ceil(total / pageLimit),
+    },
+  };
+};
+
 module.exports = {
   createPurchaseBill,
   updatePurchaseBill,
@@ -1118,4 +1190,5 @@ module.exports = {
   deletePurchaseBill,
   getPurchaseBills,
   getPurchaseBillByNumber,
+  getPurchaseBillPayments,
 };

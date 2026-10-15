@@ -9,6 +9,11 @@ const objectId = Joi.string()
 
 const money = Joi.number().min(0).max(1000000000).precision(2).strict();
 
+const purchaseBillPaymentsQuerySchema = Joi.object({
+  page: Joi.number().integer().min(1).default(1),
+
+  limit: Joi.number().integer().min(1).max(100).default(20),
+}).unknown(false);
 const optionalText = (maxLength) =>
   Joi.string().trim().max(maxLength).allow("", null);
 
@@ -155,4 +160,8 @@ module.exports = {
   validatePurchaseBillParams: validate(billParamsSchema, "params"),
 
   validateListPurchaseBills: validate(listPurchaseBillsSchema, "query"),
+  validatePurchaseBillPaymentsQuery: validate(
+    purchaseBillPaymentsQuerySchema,
+    "query",
+  ),
 };

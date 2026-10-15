@@ -113,7 +113,26 @@ const deletePurchaseBill = async (req, res, next) => {
     next(error);
   }
 };
+const getPurchaseBillPayments = async (req, res, next) => {
+  try {
+    const result =
+      await purchaseBillService.getPurchaseBillPayments({
+        ...(req.validatedQuery || {}),
+        tenantId: req.tenantId,
+        billNumber:
+          req.validatedParams?.billNumber ||
+          req.params.billNumber,
+      });
 
+    return res.status(200).json({
+      success: true,
+      data: result.data,
+      pagination: result.pagination,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
 module.exports = {
   createPurchaseBill,
   getPurchaseBills,
@@ -121,4 +140,5 @@ module.exports = {
   updatePurchaseBill,
   postPurchaseBill,
   deletePurchaseBill,
+  getPurchaseBillPayments
 };

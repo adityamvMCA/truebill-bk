@@ -1,41 +1,24 @@
 const mongoose = require("mongoose");
 const crypto = require("crypto");
 
-
 const SupplierPayment = require("./supplierPayment.model");
 
-
-const PurchaseBill = require(
-  "../purchase-bills/purchaseBill.model",
-);
-
+const PurchaseBill = require("../purchase-bills/purchaseBill.model");
 
 const Supplier = require("../suppliers/supplier.model");
 
-
-const Ledger = require(
-  "../accounting/ledgers/ledger.model",
-);
-
-
+const Ledger = require("../accounting/ledgers/ledger.model");
+const Journal = require("../accounting/journals/journal.model");
 const {
   postJournal,
   rupeesToPaise,
 } = require("../accounting/journals/journal.service");
 
-
 const AuditLog = require("../../models/AuditLog");
 
+const NotificationService = require("../../services/notificationService");
 
-const NotificationService = require(
-  "../../services/notificationService",
-);
-
-
-const {
-  getNextSequence,
-} = require("../../utils/sequenceGenerator");
-
+const { getNextSequence } = require("../../utils/sequenceGenerator");
 
 const createError = (message, statusCode = 400) => {
   const error = new Error(message);
@@ -43,23 +26,15 @@ const createError = (message, statusCode = 400) => {
   return error;
 };
 
+const normalizeText = (value) => String(value ?? "").trim();
 
-const normalizeText = (value) =>
-  String(value ?? "").trim();
-
-
-const normalizeCode = (value) =>
-  normalizeText(value).toUpperCase();
-
+const normalizeCode = (value) => normalizeText(value).toUpperCase();
 
 const validateObjectId = (value, fieldName) => {
   if (!mongoose.isObjectIdOrHexString(value)) {
-    throw createError(
-      `${fieldName} must be a valid ObjectId`,
-    );
+    throw createError(`${fieldName} must be a valid ObjectId`);
   }
 };
-
 
 const assertPositivePaise = (amount, fieldName) => {
   if (!Number.isSafeInteger(amount) || amount <= 0) {
@@ -68,23 +43,14 @@ const assertPositivePaise = (amount, fieldName) => {
     );
   }
 
-
   return amount;
 };
 
-
 const normalizeRequest = (payload) => {
   validateObjectId(payload.supplierId, "supplierId");
-  validateObjectId(
-    payload.paymentLedgerId,
-    "paymentLedgerId",
-  );
+  validateObjectId(payload.paymentLedgerId, "paymentLedgerId");
 
-
-  const requestId = normalizeText(
-    payload.requestId,
-  ).toLowerCase();
-
+  const requestId = normalizeText(payload.requestId).toLowerCase();
 
   if (
     !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(
@@ -94,154 +60,94 @@ const normalizeRequest = (payload) => {
     throw createError("requestId must be a UUID v4");
   }
 
-
   const paymentDate = new Date(payload.paymentDate);
 
-
-  if (
-    !payload.paymentDate ||
-    Number.isNaN(paymentDate.getTime())
-  ) {
+  if (!payload.paymentDate || Number.isNaN(paymentDate.getTime())) {
     throw createError("A valid paymentDate is required");
   }
 
-
-  const paymentMethod = normalizeCode(
-    payload.paymentMethod,
-  );
-
+  const paymentMethod = normalizeCode(payload.paymentMethod);
 
   if (
-    ![
-      "CASH",
-      "BANK_TRANSFER",
-      "UPI",
-      "CHEQUE",
-      "CARD",
-    ].includes(paymentMethod)
+    !["CASH", "BANK_TRANSFER", "UPI", "CHEQUE", "CARD"].includes(paymentMethod)
   ) {
     throw createError("Invalid payment method");
   }
-
 
   const amountPaise = assertPositivePaise(
     rupeesToPaise(payload.amount, "Payment amount"),
     "Payment amount",
   );
 
-
   if (amountPaise > 100000000000) {
-    throw createError(
-      "Payment amount exceeds the supported limit",
-    );
+    throw createError("Payment amount exceeds the supported limit");
   }
-
 
   if (
     !Array.isArray(payload.allocations) ||
     payload.allocations.length < 1 ||
     payload.allocations.length > 200
   ) {
-    throw createError(
-      "A payment requires between 1 and 200 allocations",
-    );
+    throw createError("A payment requires between 1 and 200 allocations");
   }
-
 
   const seenBillIds = new Set();
   let allocatedPaise = 0;
 
+  const allocations = payload.allocations.map((allocation, index) => {
+    validateObjectId(
+      allocation.purchaseBillId,
+      `Allocation ${index + 1} purchaseBillId`,
+    );
 
-  const allocations = payload.allocations.map(
-    (allocation, index) => {
-      validateObjectId(
-        allocation.purchaseBillId,
-        `Allocation ${index + 1} purchaseBillId`,
-      );
+    const purchaseBillId = String(allocation.purchaseBillId).toLowerCase();
 
+    if (seenBillIds.has(purchaseBillId)) {
+      throw createError("A bill can appear only once in a payment");
+    }
 
-      const purchaseBillId = String(
-        allocation.purchaseBillId,
-      ).toLowerCase();
+    seenBillIds.add(purchaseBillId);
 
+    const allocationPaise = assertPositivePaise(
+      rupeesToPaise(allocation.amount, `Allocation ${index + 1} amount`),
+      `Allocation ${index + 1} amount`,
+    );
 
-      if (seenBillIds.has(purchaseBillId)) {
-        throw createError(
-          "A bill can appear only once in a payment",
-        );
-      }
+    allocatedPaise += allocationPaise;
 
+    if (!Number.isSafeInteger(allocatedPaise)) {
+      throw createError("Allocated total exceeds the supported range");
+    }
 
-      seenBillIds.add(purchaseBillId);
-
-
-      const allocationPaise = assertPositivePaise(
-        rupeesToPaise(
-          allocation.amount,
-          `Allocation ${index + 1} amount`,
-        ),
-        `Allocation ${index + 1} amount`,
-      );
-
-
-      allocatedPaise += allocationPaise;
-
-
-      if (!Number.isSafeInteger(allocatedPaise)) {
-        throw createError(
-          "Allocated total exceeds the supported range",
-        );
-      }
-
-
-      return {
-        purchaseBillId,
-        amountPaise: allocationPaise,
-      };
-    },
-  );
-
+    return {
+      purchaseBillId,
+      amountPaise: allocationPaise,
+    };
+  });
 
   if (allocatedPaise !== amountPaise) {
-    throw createError(
-      "Allocated amounts must equal the payment amount",
-    );
+    throw createError("Allocated amounts must equal the payment amount");
   }
 
-
   allocations.sort((first, second) =>
-    first.purchaseBillId.localeCompare(
-      second.purchaseBillId,
-    ),
+    first.purchaseBillId.localeCompare(second.purchaseBillId),
   );
 
-
-  const referenceNumber =
-    normalizeText(payload.referenceNumber) || null;
-
+  const referenceNumber = normalizeText(payload.referenceNumber) || null;
 
   const notes = normalizeText(payload.notes) || null;
 
-
   if (referenceNumber && referenceNumber.length > 100) {
-    throw createError(
-      "Reference number cannot exceed 100 characters",
-    );
+    throw createError("Reference number cannot exceed 100 characters");
   }
-
 
   if (notes && notes.length > 1000) {
-    throw createError(
-      "Notes cannot exceed 1000 characters",
-    );
+    throw createError("Notes cannot exceed 1000 characters");
   }
-
 
   const normalized = {
     supplierId: String(payload.supplierId).toLowerCase(),
-    paymentLedgerId: String(
-      payload.paymentLedgerId,
-    ).toLowerCase(),
+    paymentLedgerId: String(payload.paymentLedgerId).toLowerCase(),
     paymentDate: paymentDate.toISOString(),
     paymentMethod,
     referenceNumber,
@@ -250,12 +156,10 @@ const normalizeRequest = (payload) => {
     notes,
   };
 
-
   const requestHash = crypto
     .createHash("sha256")
     .update(JSON.stringify(normalized))
     .digest("hex");
-
 
   return {
     ...normalized,
@@ -263,7 +167,6 @@ const normalizeRequest = (payload) => {
     requestHash,
   };
 };
-
 
 const checkExistingPayment = (payment, requestHash) => {
   if (payment.requestHash !== requestHash) {
@@ -273,14 +176,11 @@ const checkExistingPayment = (payment, requestHash) => {
     );
   }
 
-
   const result = { ...payment };
   delete result.requestHash;
 
-
   return result;
 };
-
 
 const getExistingPayment = async ({
   tenantId,
@@ -295,26 +195,16 @@ const getExistingPayment = async ({
     .select("+requestHash")
     .lean();
 
-
   if (session) {
     query.session(session);
   }
 
-
   const payment = await query;
 
-
-  return payment
-    ? checkExistingPayment(payment, requestHash)
-    : null;
+  return payment ? checkExistingPayment(payment, requestHash) : null;
 };
 
-
-const getSupplierAndLedger = async ({
-  tenantId,
-  supplierId,
-  session,
-}) => {
+const getSupplierAndLedger = async ({ tenantId, supplierId, session }) => {
   const supplier = await Supplier.findOne({
     _id: supplierId,
     tenantId,
@@ -322,22 +212,13 @@ const getSupplierAndLedger = async ({
     isDeleted: false,
   }).session(session);
 
-
   if (!supplier) {
-    throw createError(
-      "Active supplier not found",
-      404,
-    );
+    throw createError("Active supplier not found", 404);
   }
-
 
   if (!supplier.ledgerId) {
-    throw createError(
-      "Supplier has no linked accounting ledger",
-      409,
-    );
+    throw createError("Supplier has no linked accounting ledger", 409);
   }
-
 
   const ledger = await Ledger.findOne({
     _id: supplier.ledgerId,
@@ -349,27 +230,15 @@ const getSupplierAndLedger = async ({
     isActive: true,
   }).session(session);
 
-
   if (!ledger) {
-    throw createError(
-      "The linked supplier ledger is missing or inactive",
-      409,
-    );
+    throw createError("The linked supplier ledger is missing or inactive", 409);
   }
-
 
   return { supplier, ledger };
 };
 
-
-const getPaymentLedger = async ({
-  tenantId,
-  request,
-  session,
-}) => {
-  const expectedType =
-    request.paymentMethod === "CASH" ? "CASH" : "BANK";
-
+const getPaymentLedger = async ({ tenantId, request, session }) => {
+  const expectedType = request.paymentMethod === "CASH" ? "CASH" : "BANK";
 
   const ledger = await Ledger.findOne({
     _id: request.paymentLedgerId,
@@ -378,7 +247,6 @@ const getPaymentLedger = async ({
     nature: "ASSET",
     isActive: true,
   }).session(session);
-
 
   if (!ledger) {
     throw createError(
@@ -389,12 +257,10 @@ const getPaymentLedger = async ({
     );
   }
 
-
   const balancePaise = rupeesToPaise(
     ledger.currentBalance,
     `Balance of ${ledger.name}`,
   );
-
 
   if (
     ledger.currentBalanceType !== "DEBIT" ||
@@ -407,16 +273,10 @@ const getPaymentLedger = async ({
     );
   }
 
-
   return ledger;
 };
 
-
-const notifyPaymentPosted = async ({
-  tenantId,
-  userId,
-  payment,
-}) => {
+const notifyPaymentPosted = async ({ tenantId, userId, payment }) => {
   try {
     await NotificationService.create({
       tenantId,
@@ -444,7 +304,6 @@ const notifyPaymentPosted = async ({
   }
 };
 
-
 const createSupplierPayment = async ({
   tenantId,
   userId,
@@ -454,16 +313,13 @@ const createSupplierPayment = async ({
   validateObjectId(tenantId, "tenantId");
   validateObjectId(userId, "userId");
 
-
   const request = normalizeRequest(payload);
-
 
   const existing = await getExistingPayment({
     tenantId,
     requestId: request.requestId,
     requestHash: request.requestHash,
   });
-
 
   if (existing) {
     return {
@@ -472,19 +328,15 @@ const createSupplierPayment = async ({
     };
   }
 
-
   const session = await mongoose.startSession();
-
 
   let result;
   let createdNew = false;
-
 
   try {
     await session.withTransaction(async () => {
       createdNew = false;
       result = null;
-
 
       const alreadyCreated = await getExistingPayment({
         tenantId,
@@ -493,22 +345,16 @@ const createSupplierPayment = async ({
         session,
       });
 
-
       if (alreadyCreated) {
         result = alreadyCreated;
         return;
       }
 
-
-      const {
-        supplier,
-        ledger: supplierLedger,
-      } = await getSupplierAndLedger({
+      const { supplier, ledger: supplierLedger } = await getSupplierAndLedger({
         tenantId,
         supplierId: request.supplierId,
         session,
       });
-
 
       const paymentLedger = await getPaymentLedger({
         tenantId,
@@ -516,12 +362,10 @@ const createSupplierPayment = async ({
         session,
       });
 
-
       const supplierBalancePaise = rupeesToPaise(
         supplierLedger.currentBalance,
         "Supplier ledger balance",
       );
-
 
       if (
         supplierLedger.currentBalanceType !== "CREDIT" ||
@@ -534,11 +378,9 @@ const createSupplierPayment = async ({
         );
       }
 
-
       const billIds = request.allocations.map(
         (allocation) => allocation.purchaseBillId,
       );
-
 
       const bills = await PurchaseBill.find({
         tenantId,
@@ -549,7 +391,6 @@ const createSupplierPayment = async ({
         isDeleted: false,
       }).session(session);
 
-
       if (bills.length !== billIds.length) {
         throw createError(
           "One or more selected bills are unavailable, not posted, " +
@@ -558,35 +399,21 @@ const createSupplierPayment = async ({
         );
       }
 
-
-      const billMap = new Map(
-        bills.map((bill) => [
-          String(bill._id),
-          bill,
-        ]),
-      );
-
+      const billMap = new Map(bills.map((bill) => [String(bill._id), bill]));
 
       const allocationRecords = [];
 
-
       for (const allocation of request.allocations) {
-        const bill = billMap.get(
-          allocation.purchaseBillId,
-        );
-
+        const bill = billMap.get(allocation.purchaseBillId);
 
         if (
           !Number.isSafeInteger(bill.totalAmountPaise) ||
           !Number.isSafeInteger(bill.paidAmountPaise) ||
-          !Number.isSafeInteger(
-            bill.outstandingAmountPaise,
-          ) ||
+          !Number.isSafeInteger(bill.outstandingAmountPaise) ||
           bill.paidAmountPaise < 0 ||
           bill.outstandingAmountPaise < 0 ||
           bill.totalAmountPaise !==
-            bill.paidAmountPaise +
-              bill.outstandingAmountPaise
+            bill.paidAmountPaise + bill.outstandingAmountPaise
         ) {
           throw createError(
             `Bill ${bill.billNumber} has inconsistent payment balances`,
@@ -594,48 +421,31 @@ const createSupplierPayment = async ({
           );
         }
 
-
-        if (
-          new Date(request.paymentDate) <
-          new Date(bill.billDate)
-        ) {
+        if (new Date(request.paymentDate) < new Date(bill.billDate)) {
           throw createError(
             `Payment date cannot be before the date of ${bill.billNumber}. ` +
               "Advance payments are not supported in this version.",
           );
         }
 
-
-        if (
-          allocation.amountPaise >
-          bill.outstandingAmountPaise
-        ) {
+        if (allocation.amountPaise > bill.outstandingAmountPaise) {
           throw createError(
             `Allocation exceeds the remaining amount for ${bill.billNumber}`,
             409,
           );
         }
 
-
         allocationRecords.push({
           purchaseBillId: bill._id,
           billNumber: bill.billNumber,
-          supplierInvoiceNumber:
-            bill.supplierInvoiceNumber,
+          supplierInvoiceNumber: bill.supplierInvoiceNumber,
           amountPaise: allocation.amountPaise,
         });
       }
 
+      const paymentId = new mongoose.Types.ObjectId();
 
-      const paymentId =
-        new mongoose.Types.ObjectId();
-
-
-      const paymentNumber = await getNextSequence(
-        "SP",
-        tenantId.toString(),
-      );
-
+      const paymentNumber = await getNextSequence("SP", tenantId.toString());
 
       const journal = await postJournal({
         tenantId,
@@ -645,9 +455,7 @@ const createSupplierPayment = async ({
         sourceId: paymentId,
         sourceNumber: paymentNumber,
         narration:
-          `Supplier payment ${paymentNumber} — ` +
-          supplier.supplierName,
-
+          `Supplier payment ${paymentNumber} — ` + supplier.supplierName,
 
         lines: [
           {
@@ -662,39 +470,24 @@ const createSupplierPayment = async ({
           },
         ],
 
-
         session,
       });
 
-
       for (const allocation of request.allocations) {
-        const bill = billMap.get(
-          allocation.purchaseBillId,
-        );
-
+        const bill = billMap.get(allocation.purchaseBillId);
 
         const oldData = bill.toObject();
 
+        bill.paidAmountPaise += allocation.amountPaise;
 
-        bill.paidAmountPaise +=
-          allocation.amountPaise;
-
-
-        bill.outstandingAmountPaise -=
-          allocation.amountPaise;
-
+        bill.outstandingAmountPaise -= allocation.amountPaise;
 
         bill.paymentStatus =
-          bill.outstandingAmountPaise === 0
-            ? "PAID"
-            : "PARTIALLY_PAID";
-
+          bill.outstandingAmountPaise === 0 ? "PAID" : "PARTIALLY_PAID";
 
         bill.updatedBy = userId;
 
-
         await bill.save({ session });
-
 
         await AuditLog.create(
           [
@@ -713,39 +506,27 @@ const createSupplierPayment = async ({
         );
       }
 
-
-      const updatedSupplierLedger =
-        await Ledger.findOne({
-          _id: supplierLedger._id,
-          tenantId,
-        })
-          .session(session)
-          .lean();
-
+      const updatedSupplierLedger = await Ledger.findOne({
+        _id: supplierLedger._id,
+        tenantId,
+      })
+        .session(session)
+        .lean();
 
       if (!updatedSupplierLedger) {
-        throw createError(
-          "Supplier ledger was not found after posting",
-          409,
-        );
+        throw createError("Supplier ledger was not found after posting", 409);
       }
-
 
       const oldSupplierData = supplier.toObject();
 
-
       supplier.payableBalance =
-        updatedSupplierLedger.currentBalanceType ===
-        "CREDIT"
+        updatedSupplierLedger.currentBalanceType === "CREDIT"
           ? updatedSupplierLedger.currentBalance
           : 0;
 
-
       await supplier.save({ session });
 
-
       const postedAt = new Date();
-
 
       const payments = await SupplierPayment.create(
         [
@@ -756,35 +537,28 @@ const createSupplierPayment = async ({
             requestId: request.requestId,
             requestHash: request.requestHash,
 
-
             supplierId: supplier._id,
             supplierCode: supplier.supplierCode,
             supplierName: supplier.supplierName,
             supplierLedgerId: supplierLedger._id,
-
 
             paymentLedgerId: paymentLedger._id,
             paymentLedgerCode: paymentLedger.code,
             paymentLedgerName: paymentLedger.name,
             paymentLedgerType: paymentLedger.type,
 
-
             paymentDate: request.paymentDate,
             paymentMethod: request.paymentMethod,
-            referenceNumber:
-              request.referenceNumber,
-
+            referenceNumber: request.referenceNumber,
 
             currency: "INR",
             amountPaise: request.amountPaise,
             allocations: allocationRecords,
 
-
             status: "POSTED",
             journalId: journal._id,
             postedAt,
             postedBy: userId,
-
 
             notes: request.notes,
             createdBy: userId,
@@ -794,9 +568,7 @@ const createSupplierPayment = async ({
         { session, ordered: true },
       );
 
-
       const payment = payments[0];
-
 
       await AuditLog.create(
         [
@@ -826,10 +598,8 @@ const createSupplierPayment = async ({
         { session, ordered: true },
       );
 
-
       result = payment.toObject();
       delete result.requestHash;
-
 
       createdNew = true;
     });
@@ -841,7 +611,6 @@ const createSupplierPayment = async ({
         requestHash: request.requestHash,
       });
 
-
       if (replay) {
         return {
           payment: replay,
@@ -849,19 +618,16 @@ const createSupplierPayment = async ({
         };
       }
 
-
       throw createError(
         "A duplicate payment number or request ID was detected",
         409,
       );
     }
 
-
     throw error;
   } finally {
     await session.endSession();
   }
-
 
   if (createdNew) {
     await notifyPaymentPosted({
@@ -871,17 +637,13 @@ const createSupplierPayment = async ({
     });
   }
 
-
   return {
     payment: result,
     replayed: !createdNew,
   };
 };
 
-
-const escapeRegex = (value) =>
-  value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
+const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 const getSupplierPayments = async ({
   tenantId,
@@ -893,52 +655,33 @@ const getSupplierPayments = async ({
   page = 1,
   limit = 20,
 }) => {
-  const currentPage = Math.max(
-    Math.floor(Number(page) || 1),
-    1,
-  );
+  const currentPage = Math.max(Math.floor(Number(page) || 1), 1);
 
-
-  const pageLimit = Math.min(
-    Math.max(Math.floor(Number(limit) || 20), 1),
-    100,
-  );
-
+  const pageLimit = Math.min(Math.max(Math.floor(Number(limit) || 20), 1), 100);
 
   const filter = { tenantId };
-
 
   if (supplierId) {
     validateObjectId(supplierId, "supplierId");
     filter.supplierId = supplierId;
   }
 
-
   if (paymentMethod) {
     filter.paymentMethod = paymentMethod;
   }
 
-
   if (fromDate || toDate) {
     filter.paymentDate = {};
-
 
     if (fromDate) {
       filter.paymentDate.$gte = new Date(fromDate);
     }
 
-
     if (toDate) {
       if (/^\d{4}-\d{2}-\d{2}$/.test(String(toDate))) {
-        const nextDay = new Date(
-          `${toDate}T00:00:00Z`,
-        );
+        const nextDay = new Date(`${toDate}T00:00:00Z`);
 
-
-        nextDay.setUTCDate(
-          nextDay.getUTCDate() + 1,
-        );
-
+        nextDay.setUTCDate(nextDay.getUTCDate() + 1);
 
         filter.paymentDate.$lt = nextDay;
       } else {
@@ -947,16 +690,13 @@ const getSupplierPayments = async ({
     }
   }
 
-
   const searchText = normalizeText(search);
-
 
   if (searchText) {
     const regex = {
       $regex: escapeRegex(searchText),
       $options: "i",
     };
-
 
     filter.$or = [
       { paymentNumber: regex },
@@ -965,7 +705,6 @@ const getSupplierPayments = async ({
       { referenceNumber: regex },
     ];
   }
-
 
   const [data, total] = await Promise.all([
     SupplierPayment.find(filter)
@@ -978,10 +717,8 @@ const getSupplierPayments = async ({
       .limit(pageLimit)
       .lean(),
 
-
     SupplierPayment.countDocuments(filter),
   ]);
-
 
   return {
     data,
@@ -994,29 +731,43 @@ const getSupplierPayments = async ({
   };
 };
 
+// const getSupplierPaymentByNumber = async ({ tenantId, paymentNumber }) => {
+//   const payment = await SupplierPayment.findOne({
+//     tenantId,
+//     paymentNumber: normalizeCode(paymentNumber),
+//   }).lean();
 
-const getSupplierPaymentByNumber = async ({
-  tenantId,
-  paymentNumber,
-}) => {
+//   if (!payment) {
+//     throw createError("Supplier payment not found", 404);
+//   }
+
+//   return payment;
+// };
+
+const getSupplierPaymentByNumber = async ({ tenantId, paymentNumber }) => {
   const payment = await SupplierPayment.findOne({
     tenantId,
     paymentNumber: normalizeCode(paymentNumber),
   }).lean();
 
-
   if (!payment) {
-    throw createError(
-      "Supplier payment not found",
-      404,
-    );
+    throw createError("Supplier payment not found", 404);
   }
 
+  const journal = payment.journalId
+    ? await Journal.findOne({
+        _id: payment.journalId,
+        tenantId,
+      })
+        .select("journalNumber")
+        .lean()
+    : null;
 
-  return payment;
+  return {
+    ...payment,
+    journalNumber: journal?.journalNumber || null,
+  };
 };
-
-
 const getUnpaidSupplierBills = async ({
   tenantId,
   supplierId,
@@ -1024,7 +775,6 @@ const getUnpaidSupplierBills = async ({
   limit = 100,
 }) => {
   validateObjectId(supplierId, "supplierId");
-
 
   const supplier = await Supplier.findOne({
     _id: supplierId,
@@ -1035,26 +785,16 @@ const getUnpaidSupplierBills = async ({
     .select("_id")
     .lean();
 
-
   if (!supplier) {
-    throw createError(
-      "Active supplier not found",
-      404,
-    );
+    throw createError("Active supplier not found", 404);
   }
 
-
-  const currentPage = Math.max(
-    Math.floor(Number(page) || 1),
-    1,
-  );
-
+  const currentPage = Math.max(Math.floor(Number(page) || 1), 1);
 
   const pageLimit = Math.min(
     Math.max(Math.floor(Number(limit) || 100), 1),
     100,
   );
-
 
   const filter = {
     tenantId,
@@ -1063,7 +803,6 @@ const getUnpaidSupplierBills = async ({
     isDeleted: false,
     outstandingAmountPaise: { $gt: 0 },
   };
-
 
   const [data, total] = await Promise.all([
     PurchaseBill.find(filter)
@@ -1080,10 +819,8 @@ const getUnpaidSupplierBills = async ({
       .limit(pageLimit)
       .lean(),
 
-
     PurchaseBill.countDocuments(filter),
   ]);
-
 
   return {
     data,
@@ -1096,7 +833,6 @@ const getUnpaidSupplierBills = async ({
   };
 };
 
-
 const getPaymentLedgers = async ({ tenantId }) =>
   Ledger.find({
     tenantId,
@@ -1104,12 +840,9 @@ const getPaymentLedgers = async ({ tenantId }) =>
     nature: "ASSET",
     isActive: true,
   })
-    .select(
-      "code name type currentBalance currentBalanceType",
-    )
+    .select("code name type currentBalance currentBalanceType")
     .sort({ type: 1, name: 1 })
     .lean();
-
 
 module.exports = {
   createSupplierPayment,
