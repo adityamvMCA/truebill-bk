@@ -1,0 +1,6 @@
+warning: in the working copy of '.gitignore', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/config/db.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/controllers/authController.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/controllers/tenantController.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/middleware/authMiddleware.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/middleware/permissionMiddleware.js', LF will be replaced by CRLF the next time Git touches it

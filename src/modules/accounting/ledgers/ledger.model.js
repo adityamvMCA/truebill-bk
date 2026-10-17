@@ -54,13 +54,7 @@ const ledgerSchema = new mongoose.Schema(
 
     nature: {
       type: String,
-      enum: [
-        "ASSET",
-        "LIABILITY",
-        "INCOME",
-        "EXPENSE",
-        "EQUITY",
-      ],
+      enum: ["ASSET", "LIABILITY", "INCOME", "EXPENSE", "EQUITY"],
       required: true,
       index: true,
     },
@@ -162,7 +156,7 @@ const ledgerSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
-  }
+  },
 );
 
 ledgerSchema.index(
@@ -172,7 +166,7 @@ ledgerSchema.index(
   },
   {
     unique: true,
-  }
+  },
 );
 
 ledgerSchema.index(
@@ -182,7 +176,7 @@ ledgerSchema.index(
   },
   {
     unique: true,
-  }
+  },
 );
 
 ledgerSchema.index(
@@ -198,7 +192,7 @@ ledgerSchema.index(
         $type: "objectId",
       },
     },
-  }
+  },
 );
 
 // module.exports = mongoose.model("Ledger", ledgerSchema);

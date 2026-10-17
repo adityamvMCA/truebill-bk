@@ -1,7 +1,83 @@
+// const bankService = require("./bank.service");
+
+// const ctx = (req) => ({
+//   tenantId: req.tenantId,
+//   userId: req.user.userId,
+//   ipAddress: req.ip,
+// });
+
+// exports.createBank = async (req, res, next) => {
+//   try {
+//     const bank = await bankService.createBank({
+//       ...ctx(req),
+//       payload: req.body,
+//     });
+//     res
+//       .status(201)
+//       .json({
+//         success: true,
+//         message: "Bank account created successfully",
+//         bank,
+//       });
+//   } catch (e) {
+//     next(e);
+//   }
+// };
+
+// exports.getBanks = async (req, res, next) => {
+//   try {
+//     const result = await bankService.getBanks({
+//       ...req.validatedQuery,
+//       tenantId: req.tenantId,
+//     });
+//     res
+//       .status(200)
+//       .json({
+//         success: true,
+//         data: result.data,
+//         pagination: result.pagination,
+//       });
+//   } catch (e) {
+//     next(e);
+//   }
+// };
+
+// exports.getBankByCode = async (req, res, next) => {
+//   try {
+//     const bank = await bankService.getBankByCode({
+//       tenantId: req.tenantId,
+//       bankCode: req.validatedParams.bankCode,
+//     });
+//     res.status(200).json({ success: true, bank });
+//   } catch (e) {
+//     next(e);
+//   }
+// };
+
+// exports.updateBank = async (req, res, next) => {
+//   try {
+//     const bank = await bankService.updateBank({
+//       ...ctx(req),
+//       bankCode: req.validatedParams.bankCode,
+//       payload: req.body,
+//     });
+//     res
+//       .status(200)
+//       .json({
+//         success: true,
+//         message: "Bank account updated successfully",
+//         bank,
+//       });
+//   } catch (e) {
+//     next(e);
+//   }
+// };
+
+
 const bankService = require("./bank.service");
 
 const ctx = (req) => ({
-  tenantId: req.tenantId,
+  tenant: req.tenant,
   userId: req.user.userId,
   ipAddress: req.ip,
 });
@@ -12,13 +88,12 @@ exports.createBank = async (req, res, next) => {
       ...ctx(req),
       payload: req.body,
     });
-    res
-      .status(201)
-      .json({
-        success: true,
-        message: "Bank account created successfully",
-        bank,
-      });
+
+    res.status(201).json({
+      success: true,
+      message: "Bank account created successfully",
+      bank,
+    });
   } catch (e) {
     next(e);
   }
@@ -28,15 +103,14 @@ exports.getBanks = async (req, res, next) => {
   try {
     const result = await bankService.getBanks({
       ...req.validatedQuery,
-      tenantId: req.tenantId,
+      tenant: req.tenant,
     });
-    res
-      .status(200)
-      .json({
-        success: true,
-        data: result.data,
-        pagination: result.pagination,
-      });
+
+    res.status(200).json({
+      success: true,
+      data: result.data,
+      pagination: result.pagination,
+    });
   } catch (e) {
     next(e);
   }
@@ -45,10 +119,14 @@ exports.getBanks = async (req, res, next) => {
 exports.getBankByCode = async (req, res, next) => {
   try {
     const bank = await bankService.getBankByCode({
-      tenantId: req.tenantId,
+      tenant: req.tenant,
       bankCode: req.validatedParams.bankCode,
     });
-    res.status(200).json({ success: true, bank });
+
+    res.status(200).json({
+      success: true,
+      bank,
+    });
   } catch (e) {
     next(e);
   }
@@ -61,13 +139,12 @@ exports.updateBank = async (req, res, next) => {
       bankCode: req.validatedParams.bankCode,
       payload: req.body,
     });
-    res
-      .status(200)
-      .json({
-        success: true,
-        message: "Bank account updated successfully",
-        bank,
-      });
+
+    res.status(200).json({
+      success: true,
+      message: "Bank account updated successfully",
+      bank,
+    });
   } catch (e) {
     next(e);
   }

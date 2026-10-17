@@ -190,7 +190,8 @@ const purchaseBillSchema = new mongoose.Schema(
     // Explicit in version one; not inferred from free-text addresses.
     taxMode: {
       type: String,
-      enum: ["NONE", "INTRA_STATE", "INTER_STATE"],
+      // enum: ["NONE", "INTRA_STATE", "INTER_STATE"],
+      enum: ["NONE", "INTRASTATE", "INTERSTATE"],
       required: true,
     },
 

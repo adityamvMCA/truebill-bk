@@ -1,39 +1,13 @@
-require("dotenv").config();
+require("dotenv").config({ quiet: true });
 
 const mongoose = require("mongoose");
-const bcrypt = require("bcrypt");
 
 const Tenant = require("../src/models/Tenant");
 const User = require("../src/models/User");
 
-const { getNextSequence } = require(
-  "../src/utils/sequenceGenerator",
-);
-
-const { getRolePermissions } = require(
-  "../src/utils/permissions",
-);
-
-const { PLANS } = require(
-  "../src/config/subscriptionPlans",
-);
-
 const {
-  seedDefaultLedgerGroups,
-} = require(
-  "../src/modules/accounting/seeds/seedDefaultLedgerGroups",
-);
-
-const {
-  seedDefaultLedgers,
-} = require(
-  "../src/modules/accounting/seeds/seedDefaultLedgers",
-);
-
-const MONGODB_URI =
-  process.env.MONGODB_URI ||
-  process.env.MONGO_URI ||
-  "mongodb://127.0.0.1:27017/truebill";
+  createTenant,
+} = require("../src/controllers/tenantController");
 
 const TEST_TENANTS = [
   {
@@ -50,7 +24,6 @@ const TEST_TENANTS = [
     adminEmail: "test1@gmail.com",
     adminPassword: "123456",
   },
-
   {
     businessName: "Test Trader Two",
     businessType: "Trader",
@@ -65,7 +38,6 @@ const TEST_TENANTS = [
     adminEmail: "test2@gmail.com",
     adminPassword: "123456",
   },
-
   {
     businessName: "Test Trader Three",
     businessType: "Trader",
@@ -82,192 +54,353 @@ const TEST_TENANTS = [
   },
 ];
 
+const validateConfiguration = () => {
+  if (!process.argv.includes("--run")) {
+    throw new Error(
+      "Explicit --run argument is required.",
+    );
+  }
+
+  const environment = String(
+    process.env.NODE_ENV || "",
+  )
+    .trim()
+    .toLowerCase();
+
+  if (environment === "production") {
+    throw new Error(
+      "Test tenant seeding is blocked in production.",
+    );
+  }
+
+  const uri = process.env.MONGO_URI?.trim();
+
+  if (
+    !uri ||
+    (
+      !uri.startsWith("mongodb://") &&
+      !uri.startsWith("mongodb+srv://")
+    )
+  ) {
+    throw new Error(
+      "A valid MONGO_URI is required.",
+    );
+  }
+
+  const expectedMainDb =
+    process.env.SEED_EXPECTED_MAIN_DB?.trim();
+
+  if (
+    !expectedMainDb ||
+    ["admin", "config", "local"].includes(
+      expectedMainDb,
+    )
+  ) {
+    throw new Error(
+      "SEED_EXPECTED_MAIN_DB must identify your intended non-production main database.",
+    );
+  }
+
+  if (
+    process.env.TENANT_DATABASES_ENABLED !== "true"
+  ) {
+    throw new Error(
+      "TENANT_DATABASES_ENABLED must be true.",
+    );
+  }
+
+  return {
+    uri,
+    expectedMainDb,
+  };
+};
+
+const createThroughController = async (payload) => {
+  let statusCode = 200;
+  let responseBody;
+  let responded = false;
+
+  const req = {
+    body: payload,
+    user: {
+      userId: null,
+    },
+    ip: "127.0.0.1",
+  };
+
+  const res = {
+    status(code) {
+      statusCode = code;
+      return this;
+    },
+
+    json(body) {
+      responseBody = body;
+      responded = true;
+      return this;
+    },
+  };
+
+  await createTenant(req, res);
+
+  if (!responded) {
+    throw new Error(
+      "createTenant did not return a response.",
+    );
+  }
+
+  if (
+    statusCode !== 201 ||
+    responseBody?.success !== true
+  ) {
+    const error = new Error(
+      responseBody?.message ||
+        `Tenant creation failed with status ${statusCode}`,
+    );
+
+    error.tenantId = responseBody?.tenantId;
+
+    throw error;
+  }
+
+  const tenant = responseBody.tenant;
+  const admin = responseBody.admin;
+
+  if (
+    tenant?.storageMode !== "DEDICATED" ||
+    tenant?.provisioningStatus !== "READY" ||
+    !tenant?.databaseName ||
+    !tenant?.databaseKey ||
+    !tenant?.provisionedAt ||
+    tenant?.databaseSchemaVersion < 1
+  ) {
+    throw new Error(
+      "Tenant was created without completed dedicated provisioning. Verify that the corrected createTenant controller is installed.",
+    );
+  }
+
+  if (
+    admin?.isActive !== true ||
+    String(admin.tenantId) !== String(tenant._id)
+  ) {
+    throw new Error(
+      "Tenant administrator was not activated correctly.",
+    );
+  }
+
+  return {
+    tenant,
+    admin,
+  };
+};
+
 const seedTestTenants = async () => {
-  try {
-    console.log("Connecting to MongoDB...");
+  const {
+    uri,
+    expectedMainDb,
+  } = validateConfiguration();
 
-    await mongoose.connect(MONGODB_URI);
+  console.log("Connecting to MongoDB...");
 
-    console.log("Connected to MongoDB\n");
+  await mongoose.connect(uri, {
+    autoCreate: false,
+    autoIndex: false,
+    serverSelectionTimeoutMS: 15000,
+  });
 
-    let createdTenants = 0;
-    let skippedTenants = 0;
+  if (
+    mongoose.connection.name !== expectedMainDb
+  ) {
+    throw new Error(
+      `Connected to "${mongoose.connection.name}", but expected "${expectedMainDb}". No tenants were seeded.`,
+    );
+  }
 
-    for (const tenantData of TEST_TENANTS) {
-      const {
-        businessName,
-        businessType,
-        email,
-        phone,
-        address,
-        city,
-        state,
-        pincode,
-        subscriptionPlan,
-        adminName,
-        adminEmail,
-        adminPassword,
-      } = tenantData;
+  console.log(
+    `Connected main database: ${mongoose.connection.name}`,
+  );
 
-      const normalizedAdminEmail = adminEmail
-        .toLowerCase()
-        .trim();
+  console.log(
+    "Test-only seed: all new demo admins use the password defined in this file.",
+  );
 
-      const existingUser = await User.findOne({
-        email: normalizedAdminEmail,
-      });
+  await Tenant.init();
+  await User.init();
+
+  await Tenant.createIndexes();
+  await User.createIndexes();
+
+  let createdTenants = 0;
+  let skippedTenants = 0;
+
+  for (const details of TEST_TENANTS) {
+    const normalizedAdminEmail = details.adminEmail
+      .trim()
+      .toLowerCase();
+
+    const normalizedBusinessEmail = details.email
+      .trim()
+      .toLowerCase();
+
+    const existingUser = await User.findOne({
+      email: normalizedAdminEmail,
+    })
+      .select("_id tenantId")
+      .lean();
+
+    const existingTenant = await Tenant.findOne({
+      email: normalizedBusinessEmail,
+    })
+      .select(
+        "clientCode storageMode provisioningStatus databaseName",
+      )
+      .lean();
+
+    if (existingUser || existingTenant) {
+      console.log(
+        `SKIPPED: ${details.businessName}`,
+      );
 
       if (existingUser) {
         console.log(
-          `⚠ Skipped: ${businessName} — admin email already exists: ${normalizedAdminEmail}`,
+          `  Admin email already exists: ${normalizedAdminEmail}`,
         );
-
-        skippedTenants += 1;
-
-        continue;
       }
 
-      const plan = PLANS[subscriptionPlan];
-
-      if (!plan) {
+      if (existingTenant) {
         console.log(
-          `⚠ Skipped: ${businessName} — invalid subscription plan: ${subscriptionPlan}`,
+          `  Existing tenant: ${existingTenant.clientCode}`,
         );
 
-        skippedTenants += 1;
+        console.log(
+          `  Storage: ${existingTenant.storageMode || "LEGACY"}`,
+        );
 
-        continue;
+        console.log(
+          `  Provisioning: ${existingTenant.provisioningStatus || "LEGACY"}`,
+        );
+
+        if (existingTenant.databaseName) {
+          console.log(
+            `  Database: ${existingTenant.databaseName}`,
+          );
+        }
       }
 
-      const startDate = new Date();
-
-      const endDate = new Date(
-        startDate.getTime() +
-          plan.durationDays *
-            24 *
-            60 *
-            60 *
-            1000,
+      console.log(
+        "  Existing records and passwords were not changed.",
       );
-
-      const clientCode =
-        await getNextSequence(
-          "TRD",
-          "PLATFORM",
-        );
-
-      const hashedPassword =
-        await bcrypt.hash(adminPassword, 12);
-
-      const tenant = await Tenant.create({
-        clientCode,
-        businessName,
-        businessType,
-        email: email.toLowerCase().trim(),
-        phone,
-        address,
-        city,
-        state,
-        pincode,
-        subscriptionPlan,
-        subscriptionStart: startDate,
-        subscriptionEnd: endDate,
-        features: [],
-        status: "active",
-      });
-
-      /*
-        Seed default Tally-style ledger groups
-        for the newly created tenant.
-      */
-      await seedDefaultLedgerGroups({
-        tenantId: tenant._id,
-        userId: null,
-      });
-
-      /*
-        Seed default system ledgers such as
-        Cash, Sales, Purchase and GST ledgers.
-      */
-      await seedDefaultLedgers({
-        tenantId: tenant._id,
-        userId: null,
-      });
-
-      const admin = await User.create({
-        name: adminName,
-        email: normalizedAdminEmail,
-        password: hashedPassword,
-        platformRole: "tenant",
-        role: "admin",
-        tenantId: tenant._id,
-        clientCode: tenant.clientCode,
-        permissions: getRolePermissions(
-          "admin",
-        ),
-      });
-
-      createdTenants += 1;
 
       console.log(
-        `✔ Created: ${businessName}`,
+        "  Existing LEGACY tenants were not migrated.",
       );
-      console.log(
-        `   Tenant Code: ${tenant.clientCode}`,
-      );
-      console.log(
-        `   Tenant ID: ${tenant._id}`,
-      );
-      console.log(
-        `   Plan: ${subscriptionPlan}`,
-      );
-      console.log(`   Admin: ${admin.email}`);
-      console.log(
-        `   Password: ${adminPassword}`,
-      );
-      console.log(
-        `   Expires: ${endDate.toISOString()}`,
-      );
-      console.log(
-        `   Ledger groups: seeded`,
-      );
-      console.log(
-        `   Default ledgers: seeded`,
-      );
+
       console.log("");
+
+      skippedTenants += 1;
+      continue;
     }
+
+    const {
+      tenant,
+      admin,
+    } = await createThroughController({
+      ...details,
+      email: normalizedBusinessEmail,
+      adminEmail: normalizedAdminEmail,
+    });
+
+    createdTenants += 1;
 
     console.log(
-      "Test tenant seeding completed",
+      `CREATED: ${tenant.businessName}`,
     );
-    console.log(`Created: ${createdTenants}`);
-    console.log(`Skipped: ${skippedTenants}`);
 
-    await mongoose.connection.close();
+    console.log(
+      `  Client code: ${tenant.clientCode}`,
+    );
 
-    process.exit(0);
-  } catch (error) {
-    if (error.code === 11000) {
-      const duplicateField = Object.keys(
-        error.keyPattern || {},
-      )[0];
+    console.log(
+      `  Tenant ID: ${tenant._id}`,
+    );
 
+    console.log(
+      `  Database key: ${tenant.databaseKey}`,
+    );
+
+    console.log(
+      `  Database: ${tenant.databaseName}`,
+    );
+
+    console.log(
+      `  Storage: ${tenant.storageMode}`,
+    );
+
+    console.log(
+      `  Provisioning: ${tenant.provisioningStatus}`,
+    );
+
+    console.log(
+      `  Schema version: ${tenant.databaseSchemaVersion}`,
+    );
+
+    console.log(
+      `  Plan: ${tenant.subscriptionPlan}`,
+    );
+
+    console.log(
+      `  Admin: ${admin.email}`,
+    );
+
+    console.log(
+      `  Admin active: ${admin.isActive}`,
+    );
+
+    console.log(
+      `  Expires: ${new Date(
+        tenant.subscriptionEnd,
+      ).toISOString()}`,
+    );
+
+    console.log("");
+  }
+
+  console.log("Test tenant seeding completed.");
+
+  console.log(
+    `Created: ${createdTenants}`,
+  );
+
+  console.log(
+    `Skipped: ${skippedTenants}`,
+  );
+};
+
+seedTestTenants()
+  .catch((error) => {
+    console.error(
+      "Test tenant seeding FAILED:",
+      error.message,
+    );
+
+    if (error.tenantId) {
       console.error(
-        `Duplicate key error on: ${duplicateField}`,
-      );
-    } else {
-      console.error(
-        "Test tenant seeding failed:",
-        error,
+        `Inspect tenant ${error.tenantId} before retrying. Registration may already exist.`,
       );
     }
 
-    await mongoose.connection.close();
+    process.exitCode = 1;
+  })
+  .finally(async () => {
+    try {
+      await mongoose.disconnect();
+    } catch (error) {
+      console.error(
+        "MongoDB disconnect failed:",
+        error.message,
+      );
 
-    process.exit(1);
-  }
-};
-
-seedTestTenants();
-
+      process.exitCode = 1;
+    }
+  });
 ////node scripts/seedTestTenants.js
