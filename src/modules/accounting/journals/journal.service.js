@@ -1,12 +1,16 @@
 const mongoose = require("mongoose");
 
-const Journal = require("./journal.model");
-const Ledger = require("../ledgers/ledger.model");
+const {
+  getTenantAccountingModels,
+} = require("../../../tenancy/tenantAccountingModels");
 
 const { getNextSequence } = require("../../../utils/sequenceGenerator");
+
 const createError = (message, statusCode = 400) => {
   const error = new Error(message);
+
   error.statusCode = statusCode;
+
   return error;
 };
 
@@ -107,7 +111,8 @@ const normalizeLines = (lines) => {
 };
 
 const postJournal = async ({
-  tenantId,
+  tenant,
+  connection,
   userId,
   postingDate,
   sourceType,
@@ -124,7 +129,12 @@ const postJournal = async ({
     );
   }
 
+  const { Journal, Ledger } = getTenantAccountingModels(connection);
+
+  const tenantId = tenant._id;
+
   validateObjectId(tenantId, "tenantId");
+
   validateObjectId(userId, "userId");
   validateObjectId(sourceId, "sourceId");
 
@@ -221,6 +231,7 @@ const postJournal = async ({
 
   const journalLines = normalizedLines.map((line) => {
     const ledgerId = String(line.ledgerId);
+
     const ledger = ledgerMap.get(ledgerId);
 
     const delta =
@@ -289,10 +300,10 @@ const postJournal = async ({
     await ledger.save({ session });
   }
 
-  // const journalNumber =
-  //   `JV-${sourcePrefixes[sourceType]}-${String(sourceId)}`.toUpperCase();
-
-  const journalNumber = await getNextSequence("JV", tenantId.toString());
+  const journalNumber = await getNextSequence("JV", tenantId.toString(), 3, {
+    connection,
+    session,
+  });
 
   const records = await Journal.create(
     [
@@ -312,7 +323,10 @@ const postJournal = async ({
         createdBy: userId,
       },
     ],
-    { session, ordered: true },
+    {
+      session,
+      ordered: true,
+    },
   );
 
   return records[0];

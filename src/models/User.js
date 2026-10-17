@@ -22,11 +22,16 @@ const schema = new mongoose.Schema(
       select: false,
     },
 
+    // username: {
+    //   type: String,
+    //   lowercase: true,
+    //   trim: true,
+    //   sparse: true,
+    // },
     username: {
       type: String,
       lowercase: true,
       trim: true,
-      sparse: true,
     },
 
     platformRole: {
@@ -80,7 +85,7 @@ const schema = new mongoose.Schema(
 );
 
 schema.index({ email: 1 }, { unique: true });
-schema.index({ username: 1 }, { unique: true, sparse: true });
+// schema.index({ username: 1 }, { unique: true, sparse: true });p
 schema.index({ tenantId: 1, email: 1 });
 schema.index({ tenantId: 1, isActive: 1 });
 

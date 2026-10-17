@@ -3,39 +3,31 @@ const bcrypt = require("bcrypt");
 
 const Tenant = require("../models/Tenant");
 const User = require("../models/User");
-const {
-  seedDefaultLedgerGroups,
-} = require("../modules/accounting/seeds/seedDefaultLedgerGroups");
+
+const { randomBytes } = require("node:crypto");
 
 const {
-  seedDefaultLedgers,
-} = require("../modules/accounting/seeds/seedDefaultLedgers");
-const {
-  getNextSequence,
-} = require("../utils/sequenceGenerator");
+  getTenantDatabaseName,
+} = require("../tenancy/tenantDatabaseNames");
 
 const {
-  getRolePermissions,
-} = require("../utils/permissions");
+  provisionTenantDatabase,
+} = require("../tenancy/provisionTenantDatabase");
+const { getNextSequence } = require("../utils/sequenceGenerator");
 
-const {
-  PLANS: SUBSCRIPTION_PLANS,
-} = require("../config/subscriptionPlans");
+const { getRolePermissions } = require("../utils/permissions");
 
-const EMAIL_REGEX =
-  /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const { PLANS: SUBSCRIPTION_PLANS } = require("../config/subscriptionPlans");
 
-const PHONE_REGEX =
-  /^[6-9]\d{9}$/;
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-const PINCODE_REGEX =
-  /^[1-9][0-9]{5}$/;
+const PHONE_REGEX = /^[6-9]\d{9}$/;
 
-const GST_REGEX =
-  /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
+const PINCODE_REGEX = /^[1-9][0-9]{5}$/;
 
-const PAN_REGEX =
-  /^[A-Z]{5}[0-9]{4}[A-Z]$/;
+const GST_REGEX = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
+
+const PAN_REGEX = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
 
 const ALLOWED_ROLES = [
   "admin",
@@ -48,11 +40,7 @@ const ALLOWED_ROLES = [
 ];
 
 const normalizeOptionalText = (value) => {
-  if (
-    value === undefined ||
-    value === null ||
-    String(value).trim() === ""
-  ) {
+  if (value === undefined || value === null || String(value).trim() === "") {
     return undefined;
   }
 
@@ -66,9 +54,7 @@ const normalizePhone = (phone) => {
     return undefined;
   }
 
-  return value
-    .replace(/\D/g, "")
-    .slice(-10);
+  return value.replace(/\D/g, "").slice(-10);
 };
 
 const getMapValue = (mapOrObject, key) => {
@@ -94,13 +80,9 @@ const validateTenantBusinessFields = ({
   panNo,
   pincode,
 }) => {
-  const normalizedEmail =
-    normalizeOptionalText(email)?.toLowerCase();
+  const normalizedEmail = normalizeOptionalText(email)?.toLowerCase();
 
-  if (
-    normalizedEmail &&
-    !EMAIL_REGEX.test(normalizedEmail)
-  ) {
+  if (normalizedEmail && !EMAIL_REGEX.test(normalizedEmail)) {
     return {
       error: "Invalid business email",
     };
@@ -108,46 +90,31 @@ const validateTenantBusinessFields = ({
 
   const normalizedPhone = normalizePhone(phone);
 
-  if (
-    normalizedPhone &&
-    !PHONE_REGEX.test(normalizedPhone)
-  ) {
+  if (normalizedPhone && !PHONE_REGEX.test(normalizedPhone)) {
     return {
       error: "Invalid phone number",
     };
   }
 
-  const normalizedGst =
-    normalizeOptionalText(gstNo)?.toUpperCase();
+  const normalizedGst = normalizeOptionalText(gstNo)?.toUpperCase();
 
-  if (
-    normalizedGst &&
-    !GST_REGEX.test(normalizedGst)
-  ) {
+  if (normalizedGst && !GST_REGEX.test(normalizedGst)) {
     return {
       error: "Invalid GST number",
     };
   }
 
-  const normalizedPan =
-    normalizeOptionalText(panNo)?.toUpperCase();
+  const normalizedPan = normalizeOptionalText(panNo)?.toUpperCase();
 
-  if (
-    normalizedPan &&
-    !PAN_REGEX.test(normalizedPan)
-  ) {
+  if (normalizedPan && !PAN_REGEX.test(normalizedPan)) {
     return {
       error: "Invalid PAN number",
     };
   }
 
-  const normalizedPincode =
-    normalizeOptionalText(pincode);
+  const normalizedPincode = normalizeOptionalText(pincode);
 
-  if (
-    normalizedPincode &&
-    !PINCODE_REGEX.test(normalizedPincode)
-  ) {
+  if (normalizedPincode && !PINCODE_REGEX.test(normalizedPincode)) {
     return {
       error: "Invalid pincode",
     };
@@ -181,8 +148,7 @@ const isTenantSubscriptionActive = (tenant) => {
 
   if (
     tenant.subscriptionEnd &&
-    new Date(tenant.subscriptionEnd) <=
-      new Date()
+    new Date(tenant.subscriptionEnd) <= new Date()
   ) {
     return false;
   }
@@ -191,20 +157,11 @@ const isTenantSubscriptionActive = (tenant) => {
 };
 
 const getTenantUserLimit = (tenant) => {
-  const plan =
-    SUBSCRIPTION_PLANS[
-      tenant.subscriptionPlan
-    ];
+  const plan = SUBSCRIPTION_PLANS[tenant.subscriptionPlan];
 
-  const customLimit = getMapValue(
-    tenant.limits,
-    "users",
-  );
+  const customLimit = getMapValue(tenant.limits, "users");
 
-  if (
-    customLimit !== undefined &&
-    customLimit !== null
-  ) {
+  if (customLimit !== undefined && customLimit !== null) {
     return {
       limit: Number(customLimit),
       plan,
@@ -236,16 +193,10 @@ const toPublicUser = (user) => ({
 
 const getTenants = async (req, res) => {
   try {
-    const page = Math.max(
-      parseInt(req.query.page, 10) || 1,
-      1,
-    );
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
 
     const limit = Math.min(
-      Math.max(
-        parseInt(req.query.limit, 10) || 20,
-        1,
-      ),
+      Math.max(parseInt(req.query.limit, 10) || 20, 1),
       100,
     );
 
@@ -256,17 +207,11 @@ const getTenants = async (req, res) => {
     };
 
     if (req.query.status) {
-      filter.status = String(
-        req.query.status,
-      )
-        .trim()
-        .toLowerCase();
+      filter.status = String(req.query.status).trim().toLowerCase();
     }
 
     if (req.query.search?.trim()) {
-      const search = String(
-        req.query.search,
-      ).trim();
+      const search = String(req.query.search).trim();
 
       filter.$or = [
         {
@@ -290,22 +235,19 @@ const getTenants = async (req, res) => {
       ];
     }
 
-    const [tenants, total] =
-      await Promise.all([
-        Tenant.find(filter)
-          .sort({
-            createdAt: -1,
-          })
-          .skip(skip)
-          .limit(limit)
-          .lean(),
+    const [tenants, total] = await Promise.all([
+      Tenant.find(filter)
+        .sort({
+          createdAt: -1,
+        })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
 
-        Tenant.countDocuments(filter),
-      ]);
+      Tenant.countDocuments(filter),
+    ]);
 
-    const tenantIds = tenants.map(
-      (tenant) => tenant._id,
-    );
+    const tenantIds = tenants.map((tenant) => tenant._id);
 
     const userCounts = tenantIds.length
       ? await User.aggregate([
@@ -330,18 +272,12 @@ const getTenants = async (req, res) => {
       : [];
 
     const userCountMap = new Map(
-      userCounts.map((item) => [
-        String(item._id),
-        item.count,
-      ]),
+      userCounts.map((item) => [String(item._id), item.count]),
     );
 
     const result = tenants.map((tenant) => ({
       ...tenant,
-      userCount:
-        userCountMap.get(
-          String(tenant._id),
-        ) || 0,
+      userCount: userCountMap.get(String(tenant._id)) || 0,
     }));
 
     return res.json({
@@ -353,10 +289,7 @@ const getTenants = async (req, res) => {
       tenants: result,
     });
   } catch (error) {
-    console.error(
-      "Get tenants error:",
-      error,
-    );
+    console.error("Get tenants error:", error);
 
     return res.status(500).json({
       success: false,
@@ -388,12 +321,11 @@ const getTenantById = async (req, res) => {
       });
     }
 
-    const userCount =
-      await User.countDocuments({
-        tenantId: tenant._id,
-        platformRole: "tenant",
-        isActive: true,
-      });
+    const userCount = await User.countDocuments({
+      tenantId: tenant._id,
+      platformRole: "tenant",
+      isActive: true,
+    });
 
     return res.json({
       success: true,
@@ -403,10 +335,7 @@ const getTenantById = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error(
-      "Get tenant error:",
-      error,
-    );
+    console.error("Get tenant error:", error);
 
     return res.status(500).json({
       success: false,
@@ -662,9 +591,18 @@ const getTenantById = async (req, res) => {
 // };
 
 const createTenant = async (req, res) => {
-  const session = await mongoose.startSession();
+  let createdTenantId = null;
+  let createdAdminId = null;
 
   try {
+    if (process.env.TENANT_DATABASES_ENABLED !== "true") {
+      return res.status(503).json({
+        success: false,
+        message:
+          "Dedicated tenant databases are not enabled",
+      });
+    }
+
     const {
       businessName,
       businessType,
@@ -681,12 +619,16 @@ const createTenant = async (req, res) => {
       adminName,
       adminEmail,
       adminPassword,
-    } = req.body;
+    } = req.body || {};
 
     if (
-      !businessName?.trim() ||
-      !adminName?.trim() ||
-      !adminEmail?.trim() ||
+      typeof businessName !== "string" ||
+      !businessName.trim() ||
+      typeof adminName !== "string" ||
+      !adminName.trim() ||
+      typeof adminEmail !== "string" ||
+      !adminEmail.trim() ||
+      typeof adminPassword !== "string" ||
       !adminPassword
     ) {
       return res.status(400).json({
@@ -704,8 +646,17 @@ const createTenant = async (req, res) => {
       });
     }
 
-    const normalizedAdminEmail =
-      adminEmail.trim().toLowerCase();
+    if (Buffer.byteLength(adminPassword, "utf8") > 72) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Admin password must not exceed 72 UTF-8 bytes",
+      });
+    }
+
+    const normalizedAdminEmail = adminEmail
+      .trim()
+      .toLowerCase();
 
     if (!EMAIL_REGEX.test(normalizedAdminEmail)) {
       return res.status(400).json({
@@ -736,8 +687,12 @@ const createTenant = async (req, res) => {
       .trim()
       .toLowerCase();
 
-    const selectedPlan =
-      SUBSCRIPTION_PLANS[planCode];
+    const selectedPlan = Object.prototype.hasOwnProperty.call(
+      SUBSCRIPTION_PLANS,
+      planCode,
+    )
+      ? SUBSCRIPTION_PLANS[planCode]
+      : null;
 
     if (!selectedPlan) {
       return res.status(400).json({
@@ -748,18 +703,57 @@ const createTenant = async (req, res) => {
 
     const startDate = new Date();
 
-    const endDate = subscriptionEnd
-      ? new Date(
-          `${subscriptionEnd}T23:59:59.999`,
-        )
-      : new Date(
-          startDate.getTime() +
-            selectedPlan.durationDays *
-              24 *
-              60 *
-              60 *
-              1000,
+    let endDate;
+
+    if (subscriptionEnd) {
+      if (
+        typeof subscriptionEnd !== "string" ||
+        !/^\d{4}-\d{2}-\d{2}$/.test(subscriptionEnd)
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Subscription end date must use YYYY-MM-DD",
+        });
+      }
+
+      const calendarDate = new Date(
+        `${subscriptionEnd}T00:00:00.000Z`,
+      );
+
+      if (
+        Number.isNaN(calendarDate.getTime()) ||
+        calendarDate.toISOString().slice(0, 10) !==
+          subscriptionEnd
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid subscription end date",
+        });
+      }
+
+      endDate = new Date(
+        `${subscriptionEnd}T23:59:59.999+05:30`,
+      );
+    } else {
+      const durationDays = Number(
+        selectedPlan.durationDays,
+      );
+
+      if (
+        !Number.isFinite(durationDays) ||
+        durationDays <= 0
+      ) {
+        throw new Error(
+          "Subscription plan has an invalid duration",
         );
+      }
+
+      endDate = new Date(
+        startDate.getTime() +
+          durationDays * 24 * 60 * 60 * 1000,
+      );
+    }
 
     if (
       Number.isNaN(endDate.getTime()) ||
@@ -772,124 +766,263 @@ const createTenant = async (req, res) => {
       });
     }
 
+    const existingAdmin = await User.exists({
+      email: normalizedAdminEmail,
+    });
+
+    if (existingAdmin) {
+      return res.status(409).json({
+        success: false,
+        message: "Admin email already exists",
+      });
+    }
+
+    if (businessValidation.normalizedEmail) {
+      const existingBusiness = await Tenant.exists({
+        email: businessValidation.normalizedEmail,
+      });
+
+      if (existingBusiness) {
+        return res.status(409).json({
+          success: false,
+          message: "Business email already exists",
+        });
+      }
+    }
+
     const clientCode = await getNextSequence(
       "TRD",
       "PLATFORM",
     );
+
+   const databaseKey = clientCode.trim().toLowerCase();
+
+    const databaseName =
+      getTenantDatabaseName(databaseKey);
 
     const hashedPassword = await bcrypt.hash(
       adminPassword,
       12,
     );
 
-    let createdTenant;
-    let createdAdmin;
+    const tenantId = new mongoose.Types.ObjectId();
+    const adminId = new mongoose.Types.ObjectId();
 
-    await session.withTransaction(
-      async () => {
-        const tenantResult =
-          await Tenant.create(
-            [
-              {
-                clientCode,
-                businessName:
-                  businessName.trim(),
-                businessType:
-                  businessType?.trim() ||
-                  "Trader",
-                email:
-                  businessValidation.normalizedEmail,
-                phone:
-                  businessValidation.normalizedPhone,
-                gstNo:
-                  businessValidation.normalizedGst,
-                panNo:
-                  businessValidation.normalizedPan,
-                address:
-                  address?.trim() || undefined,
-                city:
-                  city?.trim() || undefined,
-                state:
-                  state?.trim() || undefined,
-                pincode:
-                  businessValidation.normalizedPincode,
-                subscriptionPlan: planCode,
-                subscriptionStart: startDate,
-                subscriptionEnd: endDate,
-                features: [],
-                status: "active",
-                createdBy:
-                  req.user?.userId || null,
-              },
-            ],
+    const createdBy = req.user?.userId || null;
+
+    const mainSession =
+      await mongoose.connection.startSession();
+
+    try {
+      await mainSession.withTransaction(async () => {
+        await Tenant.create(
+          [
             {
-              session,
+              _id: tenantId,
+              clientCode,
+              businessName: businessName.trim(),
+              businessType:
+                normalizeOptionalText(businessType) ||
+                "Trader",
+              email:
+                businessValidation.normalizedEmail,
+              phone:
+                businessValidation.normalizedPhone,
+              gstNo:
+                businessValidation.normalizedGst,
+              panNo:
+                businessValidation.normalizedPan,
+              address: normalizeOptionalText(address),
+              city: normalizeOptionalText(city),
+              state: normalizeOptionalText(state),
+              pincode:
+                businessValidation.normalizedPincode,
+              subscriptionPlan: planCode,
+              subscriptionStart: startDate,
+              subscriptionEnd: endDate,
+              features: [],
+              status: "active",
+              isActive: true,
+              createdBy,
+
+              databaseKey,
+              databaseName,
+              storageMode: "DEDICATED",
+              provisioningStatus: "PROVISIONING",
+              databaseSchemaVersion: 0,
+              provisionedAt: null,
             },
+          ],
+          {
+            session: mainSession,
+            ordered: true,
+          },
+        );
+
+        await User.create(
+          [
+            {
+              _id: adminId,
+              name: adminName.trim(),
+              email: normalizedAdminEmail,
+              password: hashedPassword,
+              platformRole: "tenant",
+              role: "admin",
+              tenantId,
+              clientCode,
+              permissions:
+                getRolePermissions("admin"),
+
+              // Activated only after provisioning succeeds.
+              isActive: false,
+            },
+          ],
+          {
+            session: mainSession,
+            ordered: true,
+          },
+        );
+      });
+    } finally {
+      await mainSession.endSession();
+    }
+
+    createdTenantId = tenantId;
+    createdAdminId = adminId;
+
+    const provisioningTenant =
+      await Tenant.findById(tenantId);
+
+    if (!provisioningTenant) {
+      throw new Error(
+        "Tenant was not found after registration",
+      );
+    }
+
+    const provisioned = await provisionTenantDatabase({
+      tenant: provisioningTenant,
+      userId: createdBy,
+    });
+
+    let readyTenant;
+    let activeAdmin;
+
+    const activationSession =
+      await mongoose.connection.startSession();
+
+    try {
+      await activationSession.withTransaction(async () => {
+        const tenant = await Tenant.findOne({
+          _id: tenantId,
+          storageMode: "DEDICATED",
+          provisioningStatus: "PROVISIONING",
+          isActive: true,
+        }).session(activationSession);
+
+        if (!tenant) {
+          throw new Error(
+            "Tenant provisioning state changed before activation",
           );
+        }
 
-        createdTenant = tenantResult[0];
+        const admin = await User.findOne({
+          _id: adminId,
+          tenantId,
+          platformRole: "tenant",
+          role: "admin",
+          isActive: false,
+        }).session(activationSession);
 
-        /*
-          Seed the tenant's default Tally-style
-          Chart of Accounts immediately.
-        */
-        await seedDefaultLedgerGroups({
-          tenantId: createdTenant._id,
-          userId: req.user?.userId || null,
-          session,
+        if (!admin) {
+          throw new Error(
+            "Pending tenant administrator was not found",
+          );
+        }
+
+        tenant.databaseSchemaVersion =
+          provisioned.databaseSchemaVersion;
+
+        tenant.provisionedAt = new Date();
+        tenant.provisioningStatus = "READY";
+
+        await tenant.save({
+          session: activationSession,
         });
 
-        /*
-          Seed default system ledgers such as
-          Cash, Sales, Purchase and GST ledgers.
-        */
-        await seedDefaultLedgers({
-          tenantId: createdTenant._id,
-          userId: req.user?.userId || null,
-          session,
+        admin.isActive = true;
+
+        await admin.save({
+          session: activationSession,
         });
 
-        const adminResult =
-          await User.create(
-            [
-              {
-                name: adminName.trim(),
-                email: normalizedAdminEmail,
-                password: hashedPassword,
-                platformRole: "tenant",
-                role: "admin",
-                tenantId: createdTenant._id,
-                clientCode,
-                permissions:
-                  getRolePermissions("admin"),
-                isActive: true,
-              },
-            ],
-            {
-              session,
-            },
-          );
-
-        createdAdmin = adminResult[0];
-      },
-    );
+        readyTenant = tenant.toObject();
+        activeAdmin = toPublicUser(admin);
+      });
+    } finally {
+      await activationSession.endSession();
+    }
 
     return res.status(201).json({
       success: true,
-      message: "Trader created successfully",
-      tenant: createdTenant,
-      admin: toPublicUser(createdAdmin),
+      message:
+        "Trader created and tenant database provisioned successfully",
+      tenant: readyTenant,
+      admin: activeAdmin,
     });
   } catch (error) {
-    if (error.code === 11000) {
-      const duplicateField = Object.keys(
-        error.keyPattern || {},
-      )[0];
+    console.error(
+      "Create tenant error:",
+      error,
+    );
+
+    if (createdTenantId) {
+      try {
+        // Do not demote a Tenant whose activation committed.
+        await Tenant.updateOne(
+          {
+            _id: createdTenantId,
+            storageMode: "DEDICATED",
+            provisioningStatus: "PROVISIONING",
+          },
+          {
+            $set: {
+              provisioningStatus: "FAILED",
+            },
+          },
+          {
+            runValidators: true,
+          },
+        );
+      } catch (statusError) {
+        console.error(
+          "Could not record provisioning failure:",
+          statusError.message,
+        );
+      }
+
+      return res.status(503).json({
+        success: false,
+        code: "TENANT_PROVISIONING_INCOMPLETE",
+        message:
+          "Tenant registration was saved, but provisioning or activation could not be confirmed. Check this tenant before retrying; do not create a duplicate.",
+        tenantId: String(createdTenantId),
+        adminId: createdAdminId
+          ? String(createdAdminId)
+          : null,
+      });
+    }
+
+    if (error?.code === 11000) {
+      const duplicateField =
+        Object.keys(error.keyPattern || {})[0];
 
       const duplicateMessages = {
         email: "Email already exists",
-        clientCode:
-          "Client code already exists",
+        clientCode: "Client code already exists",
+        databaseKey:
+          "Database key already exists",
+        databaseName:
+          "Database name already exists",
       };
 
       return res.status(409).json({
@@ -900,17 +1033,10 @@ const createTenant = async (req, res) => {
       });
     }
 
-    console.error(
-      "Create tenant error:",
-      error,
-    );
-
     return res.status(500).json({
       success: false,
       message: "Failed to create trader",
     });
-  } finally {
-    await session.endSession();
   }
 };
 const updateTenant = async (req, res) => {
@@ -949,25 +1075,20 @@ const updateTenant = async (req, res) => {
       pincode,
     } = req.body;
 
-    if (
-      businessName !== undefined &&
-      !String(businessName).trim()
-    ) {
+    if (businessName !== undefined && !String(businessName).trim()) {
       return res.status(400).json({
         success: false,
-        message:
-          "Business name cannot be empty",
+        message: "Business name cannot be empty",
       });
     }
 
-    const businessValidation =
-      validateTenantBusinessFields({
-        email,
-        phone,
-        gstNo,
-        panNo,
-        pincode,
-      });
+    const businessValidation = validateTenantBusinessFields({
+      email,
+      phone,
+      gstNo,
+      panNo,
+      pincode,
+    });
 
     if (businessValidation.error) {
       return res.status(400).json({
@@ -977,87 +1098,65 @@ const updateTenant = async (req, res) => {
     }
 
     if (businessName !== undefined) {
-      tenant.businessName =
-        String(businessName).trim();
+      tenant.businessName = String(businessName).trim();
     }
 
     if (businessType !== undefined) {
-      tenant.businessType =
-        String(businessType).trim() ||
-        "Trader";
+      tenant.businessType = String(businessType).trim() || "Trader";
     }
 
     if (email !== undefined) {
-      tenant.email =
-        businessValidation.normalizedEmail ||
-        undefined;
+      tenant.email = businessValidation.normalizedEmail || undefined;
     }
 
     if (phone !== undefined) {
-      tenant.phone =
-        businessValidation.normalizedPhone ||
-        undefined;
+      tenant.phone = businessValidation.normalizedPhone || undefined;
     }
 
     if (gstNo !== undefined) {
-      tenant.gstNo =
-        businessValidation.normalizedGst ||
-        undefined;
+      tenant.gstNo = businessValidation.normalizedGst || undefined;
     }
 
     if (panNo !== undefined) {
-      tenant.panNo =
-        businessValidation.normalizedPan ||
-        undefined;
+      tenant.panNo = businessValidation.normalizedPan || undefined;
     }
 
     if (address !== undefined) {
-      tenant.address =
-        normalizeOptionalText(address);
+      tenant.address = normalizeOptionalText(address);
     }
 
     if (city !== undefined) {
-      tenant.city =
-        normalizeOptionalText(city);
+      tenant.city = normalizeOptionalText(city);
     }
 
     if (state !== undefined) {
-      tenant.state =
-        normalizeOptionalText(state);
+      tenant.state = normalizeOptionalText(state);
     }
 
     if (pincode !== undefined) {
-      tenant.pincode =
-        businessValidation.normalizedPincode ||
-        undefined;
+      tenant.pincode = businessValidation.normalizedPincode || undefined;
     }
 
     await tenant.save();
 
     return res.json({
       success: true,
-      message:
-        "Company settings updated successfully",
+      message: "Company settings updated successfully",
       tenant,
     });
   } catch (error) {
     if (error.code === 11000) {
       return res.status(409).json({
         success: false,
-        message:
-          "Business email already exists",
+        message: "Business email already exists",
       });
     }
 
-    console.error(
-      "Update tenant error:",
-      error,
-    );
+    console.error("Update tenant error:", error);
 
     return res.status(500).json({
       success: false,
-      message:
-        "Failed to update company settings",
+      message: "Failed to update company settings",
     });
   }
 };
@@ -1103,10 +1202,7 @@ const getTenantUsers = async (req, res) => {
       users,
     });
   } catch (error) {
-    console.error(
-      "Get tenant users error:",
-      error,
-    );
+    console.error("Get tenant users error:", error);
 
     return res.status(500).json({
       success: false,
@@ -1137,62 +1233,43 @@ const createTenantUser = async (req, res) => {
       });
     }
 
-    if (
-      !name?.trim() ||
-      !email?.trim() ||
-      !password
-    ) {
+    if (!name?.trim() || !email?.trim() || !password) {
       return res.status(400).json({
         success: false,
-        message:
-          "Name, email and password are required",
+        message: "Name, email and password are required",
       });
     }
 
     if (password.length < 6) {
       return res.status(400).json({
         success: false,
-        message:
-          "Password must be at least 6 characters",
+        message: "Password must be at least 6 characters",
       });
     }
 
-    const normalizedEmail =
-      email.trim().toLowerCase();
+    const normalizedEmail = email.trim().toLowerCase();
 
-    const normalizedPhone =
-      normalizePhone(phone);
+    const normalizedPhone = normalizePhone(phone);
 
-    const normalizedRole = String(
-      role || "viewer",
-    )
+    const normalizedRole = String(role || "viewer")
       .trim()
       .toLowerCase();
 
-    if (
-      !EMAIL_REGEX.test(normalizedEmail)
-    ) {
+    if (!EMAIL_REGEX.test(normalizedEmail)) {
       return res.status(400).json({
         success: false,
         message: "Invalid email",
       });
     }
 
-    if (
-      normalizedPhone &&
-      !PHONE_REGEX.test(normalizedPhone)
-    ) {
+    if (normalizedPhone && !PHONE_REGEX.test(normalizedPhone)) {
       return res.status(400).json({
         success: false,
         message: "Invalid phone number",
       });
     }
 
-    if (
-      !ALLOWED_ROLES.includes(
-        normalizedRole,
-      )
-    ) {
+    if (!ALLOWED_ROLES.includes(normalizedRole)) {
       return res.status(400).json({
         success: false,
         message: "Invalid role",
@@ -1214,39 +1291,30 @@ const createTenantUser = async (req, res) => {
     if (!isTenantSubscriptionActive(tenant)) {
       return res.status(403).json({
         success: false,
-        message:
-          "Tenant subscription is not active",
+        message: "Tenant subscription is not active",
       });
     }
 
-    const activeUserCount =
-      await User.countDocuments({
-        tenantId: tenant._id,
-        platformRole: "tenant",
-        isActive: true,
-      });
+    const activeUserCount = await User.countDocuments({
+      tenantId: tenant._id,
+      platformRole: "tenant",
+      isActive: true,
+    });
 
-    const {
-      limit: effectiveUserLimit,
-      plan,
-    } = getTenantUserLimit(tenant);
+    const { limit: effectiveUserLimit, plan } = getTenantUserLimit(tenant);
 
     if (
       Number.isFinite(effectiveUserLimit) &&
-      activeUserCount >=
-        effectiveUserLimit
+      activeUserCount >= effectiveUserLimit
     ) {
       return res.status(402).json({
         success: false,
         code: "USER_LIMIT_REACHED",
-        message:
-          "Your subscription user limit has been reached",
+        message: "Your subscription user limit has been reached",
         limit: effectiveUserLimit,
         used: activeUserCount,
-        includedUsers:
-          plan?.includedUsers,
-        extraUserPrice:
-          plan?.extraUserPrice,
+        includedUsers: plan?.includedUsers,
+        extraUserPrice: plan?.extraUserPrice,
       });
     }
 
@@ -1254,31 +1322,22 @@ const createTenantUser = async (req, res) => {
       name: name.trim(),
       email: normalizedEmail,
       phone: normalizedPhone || undefined,
-      password: await bcrypt.hash(
-        password,
-        12,
-      ),
+      password: await bcrypt.hash(password, 12),
       platformRole: "tenant",
       role: normalizedRole,
-      designation:
-        normalizeOptionalText(designation),
+      designation: normalizeOptionalText(designation),
       notes: normalizeOptionalText(notes),
       tenantId: tenant._id,
       clientCode: tenant.clientCode,
-      permissions: Array.isArray(
-        permissions,
-      )
+      permissions: Array.isArray(permissions)
         ? permissions
-        : getRolePermissions(
-            normalizedRole,
-          ),
+        : getRolePermissions(normalizedRole),
       isActive: true,
     });
 
     return res.status(201).json({
       success: true,
-      message:
-        "User created successfully",
+      message: "User created successfully",
       user: toPublicUser(user),
     });
   } catch (error) {
@@ -1289,10 +1348,7 @@ const createTenantUser = async (req, res) => {
       });
     }
 
-    console.error(
-      "Create tenant user error:",
-      error,
-    );
+    console.error("Create tenant user error:", error);
 
     return res.status(500).json({
       success: false,
@@ -1303,10 +1359,7 @@ const createTenantUser = async (req, res) => {
 
 const updateTenantUser = async (req, res) => {
   try {
-    const {
-      tenantId,
-      userId,
-    } = req.params;
+    const { tenantId, userId } = req.params;
 
     const {
       name,
@@ -1346,10 +1399,7 @@ const updateTenantUser = async (req, res) => {
       });
     }
 
-    if (
-      name !== undefined &&
-      !String(name).trim()
-    ) {
+    if (name !== undefined && !String(name).trim()) {
       return res.status(400).json({
         success: false,
         message: "Name cannot be empty",
@@ -1357,9 +1407,7 @@ const updateTenantUser = async (req, res) => {
     }
 
     if (email !== undefined) {
-      const normalizedEmail = String(email)
-        .trim()
-        .toLowerCase();
+      const normalizedEmail = String(email).trim().toLowerCase();
 
       if (!EMAIL_REGEX.test(normalizedEmail)) {
         return res.status(400).json({
@@ -1376,33 +1424,22 @@ const updateTenantUser = async (req, res) => {
     }
 
     if (phone !== undefined) {
-      const normalizedPhone =
-        normalizePhone(phone);
+      const normalizedPhone = normalizePhone(phone);
 
-      if (
-        normalizedPhone &&
-        !PHONE_REGEX.test(normalizedPhone)
-      ) {
+      if (normalizedPhone && !PHONE_REGEX.test(normalizedPhone)) {
         return res.status(400).json({
           success: false,
           message: "Invalid phone number",
         });
       }
 
-      user.phone =
-        normalizedPhone || undefined;
+      user.phone = normalizedPhone || undefined;
     }
 
     if (role !== undefined) {
-      const normalizedRole = String(role)
-        .trim()
-        .toLowerCase();
+      const normalizedRole = String(role).trim().toLowerCase();
 
-      if (
-        !ALLOWED_ROLES.includes(
-          normalizedRole,
-        )
-      ) {
+      if (!ALLOWED_ROLES.includes(normalizedRole)) {
         return res.status(400).json({
           success: false,
           message: "Invalid role",
@@ -1411,18 +1448,15 @@ const updateTenantUser = async (req, res) => {
 
       user.role = normalizedRole;
 
-      user.permissions =
-        getRolePermissions(normalizedRole);
+      user.permissions = getRolePermissions(normalizedRole);
     }
 
     if (designation !== undefined) {
-      user.designation =
-        normalizeOptionalText(designation);
+      user.designation = normalizeOptionalText(designation);
     }
 
     if (notes !== undefined) {
-      user.notes =
-        normalizeOptionalText(notes);
+      user.notes = normalizeOptionalText(notes);
     }
 
     if (Array.isArray(permissions)) {
@@ -1433,23 +1467,18 @@ const updateTenantUser = async (req, res) => {
       if (password.length < 6) {
         return res.status(400).json({
           success: false,
-          message:
-            "Password must be at least 6 characters",
+          message: "Password must be at least 6 characters",
         });
       }
 
-      user.password = await bcrypt.hash(
-        password,
-        12,
-      );
+      user.password = await bcrypt.hash(password, 12);
     }
 
     await user.save();
 
     return res.json({
       success: true,
-      message:
-        "User updated successfully",
+      message: "User updated successfully",
       user: toPublicUser(user),
     });
   } catch (error) {
@@ -1460,10 +1489,7 @@ const updateTenantUser = async (req, res) => {
       });
     }
 
-    console.error(
-      "Update tenant user error:",
-      error,
-    );
+    console.error("Update tenant user error:", error);
 
     return res.status(500).json({
       success: false,
@@ -1472,15 +1498,9 @@ const updateTenantUser = async (req, res) => {
   }
 };
 
-const updateTenantUserStatus = async (
-  req,
-  res,
-) => {
+const updateTenantUserStatus = async (req, res) => {
   try {
-    const {
-      tenantId,
-      userId,
-    } = req.params;
+    const { tenantId, userId } = req.params;
 
     const { isActive } = req.body;
 
@@ -1501,8 +1521,7 @@ const updateTenantUserStatus = async (
     if (typeof isActive !== "boolean") {
       return res.status(400).json({
         success: false,
-        message:
-          "isActive must be true or false",
+        message: "isActive must be true or false",
       });
     }
 
@@ -1519,26 +1538,21 @@ const updateTenantUserStatus = async (
       });
     }
 
-    if (
-      user.role === "admin" &&
-      isActive === false
-    ) {
-      const otherActiveAdmins =
-        await User.countDocuments({
-          tenantId,
-          platformRole: "tenant",
-          role: "admin",
-          isActive: true,
-          _id: {
-            $ne: user._id,
-          },
-        });
+    if (user.role === "admin" && isActive === false) {
+      const otherActiveAdmins = await User.countDocuments({
+        tenantId,
+        platformRole: "tenant",
+        role: "admin",
+        isActive: true,
+        _id: {
+          $ne: user._id,
+        },
+      });
 
       if (otherActiveAdmins === 0) {
         return res.status(400).json({
           success: false,
-          message:
-            "At least one active admin is required",
+          message: "At least one active admin is required",
         });
       }
     }
@@ -1555,15 +1569,11 @@ const updateTenantUserStatus = async (
       user: toPublicUser(user),
     });
   } catch (error) {
-    console.error(
-      "Update tenant user status error:",
-      error,
-    );
+    console.error("Update tenant user status error:", error);
 
     return res.status(500).json({
       success: false,
-      message:
-        "Failed to update user status",
+      message: "Failed to update user status",
     });
   }
 };

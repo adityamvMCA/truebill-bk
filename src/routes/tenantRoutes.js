@@ -19,10 +19,7 @@ const tenantAdminScope = require("../middleware/tenantAdminScope");
 
 const router = express.Router();
 
-const platformOnly = requirePlatformRole(
-  "developer",
-  "support",
-);
+const platformOnly = requirePlatformRole("developer", "support");
 
 router.use(verifyToken);
 
@@ -30,17 +27,9 @@ router.use(verifyToken);
   Platform-only tenant management.
 */
 
-router.get(
-  "/",
-  platformOnly,
-  getTenants,
-);
+router.get("/", platformOnly, getTenants);
 
-router.post(
-  "/",
-  platformOnly,
-  createTenant,
-);
+router.post("/", platformOnly, createTenant);
 
 /*
   Scoped company routes.
@@ -49,35 +38,15 @@ router.post(
   A tenant admin can access only their own tenant.
 */
 
-router.get(
-  "/:tenantId",
-  tenantAdminScope,
-  getTenantById,
-);
+router.get("/:tenantId", tenantAdminScope, getTenantById);
 
-router.put(
-  "/:tenantId",
-  tenantAdminScope,
-  updateTenant,
-);
+router.put("/:tenantId", tenantAdminScope, updateTenant);
 
-router.get(
-  "/:tenantId/users",
-  tenantAdminScope,
-  getTenantUsers,
-);
+router.get("/:tenantId/users", tenantAdminScope, getTenantUsers);
 
-router.post(
-  "/:tenantId/users",
-  tenantAdminScope,
-  createTenantUser,
-);
+router.post("/:tenantId/users", tenantAdminScope, createTenantUser);
 
-router.put(
-  "/:tenantId/users/:userId",
-  tenantAdminScope,
-  updateTenantUser,
-);
+router.put("/:tenantId/users/:userId", tenantAdminScope, updateTenantUser);
 
 router.patch(
   "/:tenantId/users/:userId/status",

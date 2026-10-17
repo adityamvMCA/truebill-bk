@@ -1,5 +1,9 @@
-const Ledger = require("../ledgers/ledger.model");
-const LedgerGroup = require("../ledger-groups/ledgerGroup.model");
+// const Ledger = require("../ledgers/ledger.model");
+// const LedgerGroup = require("../ledger-groups/ledgerGroup.model");
+
+const {
+  resolveAccountingSeedModels,
+} = require("../../../tenancy/tenantAccountingModels");
 
 const getNormalBalance = (nature) => {
   return ["ASSET", "EXPENSE"].includes(nature)
@@ -253,10 +257,143 @@ const DEFAULT_LEDGERS = [
   },
 ];
 
+// const seedDefaultLedgers = async ({
+//   tenantId,
+//   userId = null,
+//   session = null,
+// }) => {
+//   if (!tenantId) {
+//     throw new Error(
+//       "tenantId is required to seed default ledgers",
+//     );
+//   }
+
+//   const groupQuery = LedgerGroup.find({
+//     tenantId,
+//     isActive: true,
+//   })
+//     .select("_id code nature");
+
+//   if (session) {
+//     groupQuery.session(session);
+//   }
+
+//   const groups = await groupQuery.lean();
+
+//   const groupMap = new Map(
+//     groups.map((group) => [group.code, group]),
+//   );
+
+//   const missingGroups = DEFAULT_LEDGERS
+//     .filter(
+//       (ledger) =>
+//         !groupMap.has(ledger.groupCode),
+//     )
+//     .map((ledger) => ledger.groupCode);
+
+//   if (missingGroups.length) {
+//     throw new Error(
+//       `Required ledger groups are missing: ${[
+//         ...new Set(missingGroups),
+//       ].join(", ")}`,
+//     );
+//   }
+
+//   const operations = DEFAULT_LEDGERS.map(
+//     (ledger) => {
+//       const group = groupMap.get(
+//         ledger.groupCode,
+//       );
+
+//       const normalBalance = getNormalBalance(
+//         ledger.nature,
+//       );
+
+//       return {
+//         updateOne: {
+//           filter: {
+//             tenantId,
+//             code: ledger.code,
+//           },
+//           update: {
+//             $setOnInsert: {
+//               tenantId,
+//               ledgerGroupId: group._id,
+//               code: ledger.code,
+//               name: ledger.name,
+//               type: ledger.type,
+//               nature: ledger.nature,
+//               normalBalance,
+//               openingBalance: 0,
+//               openingBalanceType:
+//                 normalBalance,
+//               currentBalance: 0,
+//               currentBalanceType:
+//                 normalBalance,
+//               referenceType: null,
+//               referenceId: null,
+//               creditLimit: 0,
+//               creditDays: 0,
+//               isSystem: true,
+//               isActive: true,
+//               description: ledger.description,
+//               createdBy: userId,
+//               updatedBy: userId,
+//             },
+//           },
+//           upsert: true,
+//         },
+//       };
+//     },
+//   );
+
+//   const bulkOptions = {
+//     ordered: false,
+//   };
+
+//   if (session) {
+//     bulkOptions.session = session;
+//   }
+
+//   const result = await Ledger.bulkWrite(
+//     operations,
+//     bulkOptions,
+//   );
+
+//   const ledgerQuery = Ledger.find({
+//     tenantId,
+//     isActive: true,
+//     isSystem: true,
+//   })
+//     .populate(
+//       "ledgerGroupId",
+//       "code name nature",
+//     )
+//     .sort({
+//       nature: 1,
+//       name: 1,
+//     });
+
+//   if (session) {
+//     ledgerQuery.session(session);
+//   }
+
+//   const ledgers = await ledgerQuery.lean();
+
+//   return {
+//     insertedCount: result.upsertedCount || 0,
+//     matchedCount: result.matchedCount || 0,
+//     modifiedCount: result.modifiedCount || 0,
+//     totalLedgers: ledgers.length,
+//     ledgers,
+//   };
+// };
+
 const seedDefaultLedgers = async ({
   tenantId,
   userId = null,
   session = null,
+  models,
 }) => {
   if (!tenantId) {
     throw new Error(
@@ -264,11 +401,15 @@ const seedDefaultLedgers = async ({
     );
   }
 
+  const {
+    Ledger,
+    LedgerGroup,
+  } = resolveAccountingSeedModels(models);
+
   const groupQuery = LedgerGroup.find({
     tenantId,
     isActive: true,
-  })
-    .select("_id code nature");
+  }).select("_id code nature");
 
   if (session) {
     groupQuery.session(session);
@@ -277,21 +418,28 @@ const seedDefaultLedgers = async ({
   const groups = await groupQuery.lean();
 
   const groupMap = new Map(
-    groups.map((group) => [group.code, group]),
+    groups.map((group) => [
+      group.code,
+      group,
+    ]),
   );
 
-  const missingGroups = DEFAULT_LEDGERS
-    .filter(
-      (ledger) =>
-        !groupMap.has(ledger.groupCode),
-    )
-    .map((ledger) => ledger.groupCode);
+  const missingGroups = [
+    ...new Set(
+      DEFAULT_LEDGERS
+        .filter(
+          (ledger) =>
+            !groupMap.has(ledger.groupCode),
+        )
+        .map((ledger) => ledger.groupCode),
+    ),
+  ];
 
   if (missingGroups.length) {
     throw new Error(
-      `Required ledger groups are missing: ${[
-        ...new Set(missingGroups),
-      ].join(", ")}`,
+      `Required ledger groups are missing: ${
+        missingGroups.join(", ")
+      }`,
     );
   }
 
@@ -301,9 +449,8 @@ const seedDefaultLedgers = async ({
         ledger.groupCode,
       );
 
-      const normalBalance = getNormalBalance(
-        ledger.nature,
-      );
+      const normalBalance =
+        getNormalBalance(ledger.nature);
 
       return {
         updateOne: {
@@ -311,32 +458,40 @@ const seedDefaultLedgers = async ({
             tenantId,
             code: ledger.code,
           },
+
           update: {
             $setOnInsert: {
               tenantId,
               ledgerGroupId: group._id,
+
               code: ledger.code,
               name: ledger.name,
               type: ledger.type,
               nature: ledger.nature,
               normalBalance,
+
               openingBalance: 0,
-              openingBalanceType:
-                normalBalance,
+              openingBalanceType: normalBalance,
+
               currentBalance: 0,
-              currentBalanceType:
-                normalBalance,
+              currentBalanceType: normalBalance,
+
               referenceType: null,
               referenceId: null,
+
               creditLimit: 0,
               creditDays: 0,
+
               isSystem: true,
               isActive: true,
+
               description: ledger.description,
+
               createdBy: userId,
               updatedBy: userId,
             },
           },
+
           upsert: true,
         },
       };
@@ -344,7 +499,7 @@ const seedDefaultLedgers = async ({
   );
 
   const bulkOptions = {
-    ordered: false,
+    ordered: true,
   };
 
   if (session) {

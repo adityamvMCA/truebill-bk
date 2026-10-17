@@ -1,10 +1,6 @@
 const mongoose = require("mongoose");
 
-const tenantAdminScope = (
-  req,
-  res,
-  next,
-) => {
+const tenantAdminScope = (req, res, next) => {
   const user = req.user;
 
   if (!user) {
@@ -14,20 +10,14 @@ const tenantAdminScope = (
     });
   }
 
-  const isPlatformUser = [
-    "developer",
-    "support",
-  ].includes(user.platformRole);
+  const isPlatformUser = ["developer", "support"].includes(user.platformRole);
 
-  const isTenantAdmin =
-    user.platformRole === "tenant" &&
-    user.role === "admin";
+  const isTenantAdmin = user.platformRole === "tenant" && user.role === "admin";
 
   if (!isPlatformUser && !isTenantAdmin) {
     return res.status(403).json({
       success: false,
-      message:
-        "Company administrator access required",
+      message: "Company administrator access required",
     });
   }
 
@@ -40,14 +30,10 @@ const tenantAdminScope = (
     });
   }
 
-  if (
-    isTenantAdmin &&
-    String(user.tenantId) !== String(tenantId)
-  ) {
+  if (isTenantAdmin && String(user.tenantId) !== String(tenantId)) {
     return res.status(403).json({
       success: false,
-      message:
-        "You cannot access another company's data",
+      message: "You cannot access another company's data",
     });
   }
 

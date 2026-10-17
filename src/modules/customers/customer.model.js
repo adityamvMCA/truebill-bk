@@ -187,6 +187,12 @@ const customerSchema = new mongoose.Schema(
       ref: "User",
       default: null,
     },
+    receivableBalance: {
+      type: Number,
+      default: 0,
+      min: 0,
+      index: true,
+    },
   },
   {
     timestamps: true,
