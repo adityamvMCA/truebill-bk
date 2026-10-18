@@ -3,7 +3,7 @@ require("dotenv").config();
 const mongoose = require("mongoose");
 const crypto = require("crypto");
 
- const Menu = require("../src/models/Menu");
+const Menu = require("../src/models/Menu");
 
 const MONGODB_URI =
   process.env.MONGODB_URI ||
@@ -13,7 +13,9 @@ const MONGODB_URI =
 const APP_CODE = "truebill";
 
 const normalize = (value) =>
-  String(value || "").trim().toLowerCase();
+  String(value || "")
+    .trim()
+    .toLowerCase();
 
 const generateDocumentNumber = () =>
   `MNU-${APP_CODE.toUpperCase()}-${Date.now()}-${crypto
@@ -39,14 +41,7 @@ const menus = [
     icon: "LayoutDashboard",
     path: "/dashboard",
     feature: "dashboard",
-    roles: [
-      "admin",
-      "manager",
-      "sales",
-      "purchase",
-      "inventory",
-      "viewer",
-    ],
+    roles: ["admin", "manager", "sales", "purchase", "inventory", "viewer"],
     order: 1,
     children: [],
   },
@@ -105,6 +100,16 @@ const menus = [
         feature: "sales",
         roles: ["admin", "manager", "sales"],
         order: 5,
+      },
+      {
+        id: "customer-receipts",
+        label: "Customer Receipts",
+        icon: "Receipt",
+        path: "/sales/customer-receipts",
+        feature: "sales",
+        roles: ["admin", "sales"],
+        order: 6,
+        isActive: true,
       },
     ],
   },
@@ -718,14 +723,7 @@ const menus = [
     icon: "BarChart3",
     path: "/reports",
     feature: "reports",
-    roles: [
-      "admin",
-      "manager",
-      "sales",
-      "purchase",
-      "inventory",
-      "viewer",
-    ],
+    roles: ["admin", "manager", "sales", "purchase", "inventory", "viewer"],
     order: 1,
     children: [
       {

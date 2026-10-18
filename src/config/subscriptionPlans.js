@@ -9,6 +9,7 @@ const FEATURE_TREE = {
     "sales.customerReceipts",
     "sales.creditNotes",
     "sales.reports",
+    "salesOrder.create",
   ],
 
   purchase: [

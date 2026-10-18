@@ -3,6 +3,25 @@ const PLATFORM_ROLES = {
   SUPPORT: "support",
   TENANT: "tenant",
 };
+const SALES_ORDER_PERMISSIONS = [
+  "salesOrder.view",
+  "salesOrder.create",
+  "salesOrder.update",
+  "salesOrder.confirm",
+  "salesOrder.start",
+  "salesOrder.complete",
+  "salesOrder.cancel",
+  "salesOrder.delete",
+];
+const DELIVERY_NOTE_PERMISSIONS = [
+  "deliveryNote.view",
+  "deliveryNote.create",
+  "deliveryNote.update",
+  "deliveryNote.dispatch",
+  "deliveryNote.deliver",
+  "deliveryNote.cancel",
+  "deliveryNote.delete",
+];
 
 const ROLE_PERMISSIONS = {
   admin: [
@@ -56,6 +75,14 @@ const ROLE_PERMISSIONS = {
     "bank.update",
     "customerOutstanding.view",
     "supplierOutstanding.view",
+    ...SALES_ORDER_PERMISSIONS,
+    ...DELIVERY_NOTE_PERMISSIONS,
+
+    "salesQuotation.view",
+    "salesQuotation.create",
+    "salesQuotation.update",
+    "salesQuotation.issue",
+    "salesQuotation.delete",
   ],
 
   accountant: [
@@ -85,6 +112,13 @@ const ROLE_PERMISSIONS = {
     "accounting.banks",
     "customerOutstanding.view",
     "supplierOutstanding.view",
+    "salesQuotation.view",
+    "salesQuotation.create",
+    "salesQuotation.update",
+    "salesQuotation.issue",
+    "salesQuotation.delete",
+    "sales.quotations",
+    "",
   ],
 
   sales: [
@@ -104,6 +138,8 @@ const ROLE_PERMISSIONS = {
     "customerReceipt.post",
 
     "ledger.view",
+    "salesOrder.view",
+    "salesOrder.create",
   ],
 
   purchase: [

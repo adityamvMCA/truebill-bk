@@ -5,13 +5,13 @@ const MOVEMENT_TYPES = [
   "PURCHASE",
   "PURCHASE_RETURN",
   "SALE",
+  "DELIVERY",
   "SALES_RETURN",
   "ADJUSTMENT_IN",
   "ADJUSTMENT_OUT",
   "TRANSFER_IN",
   "TRANSFER_OUT",
 ];
-
 const DIRECTIONS = ["IN", "OUT"];
 
 const stockMovementSchema = new mongoose.Schema(
@@ -93,10 +93,11 @@ const stockMovementSchema = new mongoose.Schema(
       ADJUSTMENT_*    → StockAdjustment
     */
     referenceType: {
-      type: String,
+      type: mongoose.Schema.Types.String,
       enum: [
         "OPENING",
         "SALES_INVOICE",
+        "DELIVERY_NOTE",
         "PURCHASE_BILL",
         "SALES_RETURN",
         "PURCHASE_RETURN",
@@ -143,7 +144,7 @@ const stockMovementSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
-  }
+  },
 );
 
 stockMovementSchema.index({
@@ -174,7 +175,7 @@ stockMovementSchema.index(
         $type: "objectId",
       },
     },
-  }
+  },
 );
 
 module.exports =

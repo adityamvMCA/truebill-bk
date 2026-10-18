@@ -1,24 +1,16 @@
-const {
-  getProvisioningConnection,
-} = require("./tenantConnectionManager");
+const { getProvisioningConnection } = require("./tenantConnectionManager");
 
-const {
-  getTenantAccountingModels,
-} = require("./tenantAccountingModels");
+const { getTenantAccountingModels } = require("./tenantAccountingModels");
 
 const {
   DEFAULT_LEDGER_GROUPS,
   seedDefaultLedgerGroups,
-} = require(
-  "../modules/accounting/seeds/seedDefaultLedgerGroups",
-);
+} = require("../modules/accounting/seeds/seedDefaultLedgerGroups");
 
 const {
   DEFAULT_LEDGERS,
   seedDefaultLedgers,
-} = require(
-  "../modules/accounting/seeds/seedDefaultLedgers",
-);
+} = require("../modules/accounting/seeds/seedDefaultLedgers");
 
 const MODEL_NAMES = [
   "LedgerGroup",
@@ -34,12 +26,11 @@ const MODEL_NAMES = [
   "Customer",
   "CustomerReceipt",
   "SupplierPayment",
+  "SalesQuotation",
+  "DeliveryNote",
 ];
 
-const provisionTenantDatabase = async ({
-  tenant,
-  userId = null,
-}) => {
+const provisionTenantDatabase = async ({ tenant, userId = null }) => {
   const connection = getProvisioningConnection(tenant);
 
   const models = getTenantAccountingModels(connection);
@@ -55,18 +46,14 @@ const provisionTenantDatabase = async ({
     .toArray();
 
   if (existingCollections.length !== 0) {
-    throw new Error(
-      "Refusing initial provisioning into a non-empty database",
-    );
+    throw new Error("Refusing initial provisioning into a non-empty database");
   }
 
   for (const name of MODEL_NAMES) {
     const model = models[name];
 
     if (!model || model.db !== connection) {
-      throw new Error(
-        `Invalid tenant provisioning model: ${name}`,
-      );
+      throw new Error(`Invalid tenant provisioning model: ${name}`);
     }
   }
 
@@ -95,26 +82,20 @@ const provisionTenantDatabase = async ({
         session,
       });
 
-      const groupCount =
-        await models.LedgerGroup.countDocuments({
-          tenantId: tenant._id,
-        }).session(session);
+      const groupCount = await models.LedgerGroup.countDocuments({
+        tenantId: tenant._id,
+      }).session(session);
 
-      const ledgerCount =
-        await models.Ledger.countDocuments({
-          tenantId: tenant._id,
-        }).session(session);
+      const ledgerCount = await models.Ledger.countDocuments({
+        tenantId: tenant._id,
+      }).session(session);
 
       if (groupCount !== DEFAULT_LEDGER_GROUPS.length) {
-        throw new Error(
-          "Tenant Ledger group seed verification failed",
-        );
+        throw new Error("Tenant Ledger group seed verification failed");
       }
 
       if (ledgerCount !== DEFAULT_LEDGERS.length) {
-        throw new Error(
-          "Tenant Ledger seed verification failed",
-        );
+        throw new Error("Tenant Ledger seed verification failed");
       }
     });
   } finally {
