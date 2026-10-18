@@ -1204,7 +1204,6 @@
 //   convertQuotationToSalesOrder,
 // };
 
-
 const mongoose = require("mongoose");
 
 const {
@@ -1215,17 +1214,11 @@ const {
   getReadyTenantConnection,
 } = require("../../tenancy/tenantConnectionManager");
 
-const {
-  getNextSequence,
-} = require("../../utils/sequenceGenerator");
+const { getNextSequence } = require("../../utils/sequenceGenerator");
 
 const GST_RATES = [0, 3, 5, 12, 18, 28];
 
-const TAX_MODES = [
-  "NONE",
-  "INTRA_STATE",
-  "INTER_STATE",
-];
+const TAX_MODES = ["NONE", "INTRA_STATE", "INTER_STATE"];
 
 const ORDER_STATUSES = [
   "DRAFT",
@@ -1269,14 +1262,11 @@ const normalizeText = (value) => {
   return text || null;
 };
 
-const normalizeCode = (value) =>
-  normalizeText(value)?.toUpperCase() || null;
+const normalizeCode = (value) => normalizeText(value)?.toUpperCase() || null;
 
 const validateObjectId = (value, fieldName) => {
   if (!mongoose.isObjectIdOrHexString(value)) {
-    throw createError(
-      `${fieldName} must be a valid ObjectId`,
-    );
+    throw createError(`${fieldName} must be a valid ObjectId`);
   }
 
   return new mongoose.Types.ObjectId(String(value));
@@ -1284,16 +1274,13 @@ const validateObjectId = (value, fieldName) => {
 
 const assertSafeAmount = (value, fieldName = "Amount") => {
   if (!Number.isSafeInteger(value) || value < 0) {
-    throw createError(
-      `${fieldName} must be a non-negative safe integer`,
-    );
+    throw createError(`${fieldName} must be a non-negative safe integer`);
   }
 
   return value;
 };
 
-const addAmounts = (first, second) =>
-  assertSafeAmount(first + second);
+const addAmounts = (first, second) => assertSafeAmount(first + second);
 
 const multiplyDivide = (first, second, divisor) => {
   assertSafeAmount(first);
@@ -1306,41 +1293,24 @@ const multiplyDivide = (first, second, divisor) => {
   const numerator = BigInt(first) * BigInt(second);
   const denominator = BigInt(divisor);
 
-  return assertSafeAmount(
-    Number(
-      (numerator + denominator / 2n) / denominator,
-    ),
-  );
+  return assertSafeAmount(Number((numerator + denominator / 2n) / denominator));
 };
 
-const scaledNumber = ({
-  value,
-  scale,
-  minimum,
-  maximum,
-  fieldName,
-}) => {
+const scaledNumber = ({ value, scale, minimum, maximum, fieldName }) => {
   if (
     typeof value !== "number" ||
     !Number.isFinite(value) ||
     value < minimum ||
     value > maximum
   ) {
-    throw createError(
-      `${fieldName} must be between ${minimum} and ${maximum}`,
-    );
+    throw createError(`${fieldName} must be between ${minimum} and ${maximum}`);
   }
 
   const scaled = value * scale;
   const integer = Math.round(scaled);
 
-  if (
-    !Number.isSafeInteger(integer) ||
-    Math.abs(scaled - integer) > 0.000001
-  ) {
-    throw createError(
-      `${fieldName} has too many decimal places`,
-    );
+  if (!Number.isSafeInteger(integer) || Math.abs(scaled - integer) > 0.000001) {
+    throw createError(`${fieldName} has too many decimal places`);
   }
 
   return integer;
@@ -1356,13 +1326,7 @@ const rupeesToPaise = (value, fieldName) =>
   });
 
 const parseDate = (value, fieldName) => {
-  if (
-    !value ||
-    !(
-      typeof value === "string" ||
-      value instanceof Date
-    )
-  ) {
+  if (!value || !(typeof value === "string" || value instanceof Date)) {
     throw createError(`${fieldName} is required`);
   }
 
@@ -1393,8 +1357,7 @@ const localDateString = () => {
   ].join("-");
 };
 
-const escapeRegex = (value) =>
-  value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 const assertVersion = (order, version) => {
   // Backward-compatible while existing controllers
@@ -1404,9 +1367,7 @@ const assertVersion = (order, version) => {
   }
 
   if (!Number.isSafeInteger(version) || version < 0) {
-    throw createError(
-      "Version must be a non-negative integer",
-    );
+    throw createError("Version must be a non-negative integer");
   }
 
   if (order.__v !== version) {
@@ -1474,13 +1435,9 @@ const resolveContext = (args) => {
 const runTransaction = async (args, operation) => {
   const context = resolveContext(args);
 
-  context.userId = validateObjectId(
-    args.userId,
-    "userId",
-  );
+  context.userId = validateObjectId(args.userId, "userId");
 
-  const session =
-    await context.connection.startSession();
+  const session = await context.connection.startSession();
 
   try {
     let result;
@@ -1500,12 +1457,7 @@ const runTransaction = async (args, operation) => {
   }
 };
 
-const getCustomer = async ({
-  models,
-  tenantId,
-  customerId,
-  session,
-}) => {
+const getCustomer = async ({ models, tenantId, customerId, session }) => {
   const customer = await models.Customer.findOne({
     _id: validateObjectId(customerId, "customerId"),
     tenantId,
@@ -1515,22 +1467,55 @@ const getCustomer = async ({
     .lean();
 
   if (!customer) {
-    throw createError(
-      "Customer not found in the current tenant database",
-      404,
-    );
+    throw createError("Customer not found in the current tenant database", 404);
   }
 
   if (customer.status !== "Active") {
-    throw createError(
-      "The selected customer is inactive",
-      409,
-    );
+    throw createError("The selected customer is inactive", 409);
   }
 
   return customer;
 };
 
+// const getAcceptedQuotation = async ({
+//   models,
+//   tenantId,
+//   quotationId,
+//   customerId,
+//   session,
+// }) => {
+//   const quotation =
+//     await models.SalesQuotation.findOne({
+//       _id: validateObjectId(
+//         quotationId,
+//         "sourceQuotationId",
+//       ),
+//       tenantId,
+//       isDeleted: false,
+//       status: "ACCEPTED",
+//     })
+//       .session(session)
+//       .lean();
+
+//   if (!quotation) {
+//     throw createError(
+//       "Accepted sales quotation not found",
+//       404,
+//     );
+//   }
+
+//   if (
+//     customerId &&
+//     String(quotation.customerId) !== String(customerId)
+//   ) {
+//     throw createError(
+//       "Sales order customer must match the source quotation customer",
+//       409,
+//     );
+//   }
+
+//   return quotation;
+// };
 const getAcceptedQuotation = async ({
   models,
   tenantId,
@@ -1538,30 +1523,28 @@ const getAcceptedQuotation = async ({
   customerId,
   session,
 }) => {
-  const quotation =
-    await models.SalesQuotation.findOne({
-      _id: validateObjectId(
-        quotationId,
-        "sourceQuotationId",
-      ),
-      tenantId,
-      isDeleted: false,
-      status: "ACCEPTED",
-    })
-      .session(session)
-      .lean();
+  const quotation = await models.SalesQuotation.findOne({
+    _id: validateObjectId(quotationId, "sourceQuotationId"),
+    tenantId,
+    isDeleted: false,
+  })
+    .session(session)
+    .lean();
 
   if (!quotation) {
+    throw createError("Source quotation not found", 404);
+  }
+
+  const eligibleStatuses = ["DRAFT", "ISSUED", "ACCEPTED"];
+
+  if (!eligibleStatuses.includes(quotation.status)) {
     throw createError(
-      "Accepted sales quotation not found",
-      404,
+      "Cancelled or rejected quotations cannot be used for this order",
+      409,
     );
   }
 
-  if (
-    customerId &&
-    String(quotation.customerId) !== String(customerId)
-  ) {
+  if (customerId && String(quotation.customerId) !== String(customerId)) {
     throw createError(
       "Sales order customer must match the source quotation customer",
       409,
@@ -1570,7 +1553,6 @@ const getAcceptedQuotation = async ({
 
   return quotation;
 };
-
 const ensureNoExistingConversion = async ({
   models,
   tenantId,
@@ -1578,26 +1560,128 @@ const ensureNoExistingConversion = async ({
   excludeOrderId,
   session,
 }) => {
-  const filter = {
+  const quotation =
+    await models.SalesQuotation.findOne({
+      _id: validateObjectId(
+        quotationId,
+        "quotationId",
+      ),
+      tenantId,
+    })
+      .session(session)
+      .select(
+        "_id comparisonGroupId quotationFamilyId",
+      )
+      .lean();
+
+  if (!quotation) {
+    throw createError(
+      "Source quotation not found",
+      404,
+    );
+  }
+
+  const groupId =
+    quotation.comparisonGroupId;
+
+  /*
+   * Old records without a comparison group are
+   * protected at quotation-family level instead.
+   */
+  const scopeKey = groupId
+    ? `group_${String(groupId)}`
+    : `family_${String(
+        quotation.quotationFamilyId ||
+          quotation._id,
+      )}`;
+
+  /*
+   * A shared transaction write serializes order
+   * creation for every offer in this comparison.
+   *
+   * Use the tenant connection, not mongoose.connection.
+   */
+  const counters =
+    models.SalesOrder.db.db.collection(
+      "counters",
+    );
+
+  await counters.updateOne(
+    {
+      _id:
+        `${String(tenantId)}_` +
+        `QUOTATION_ORDER_LOCK_${scopeKey}`,
+    },
+    {
+      $inc: { seq: 1 },
+    },
+    {
+      upsert: true,
+      session,
+    },
+  );
+
+  const sourceFilter = {
     tenantId,
-    sourceQuotationId: quotationId,
+  };
+
+  if (groupId) {
+    sourceFilter.comparisonGroupId =
+      groupId;
+  } else if (
+    quotation.quotationFamilyId
+  ) {
+    sourceFilter.quotationFamilyId =
+      quotation.quotationFamilyId;
+  } else {
+    sourceFilter._id = quotation._id;
+  }
+
+  /*
+   * Include old and deleted quotation revisions.
+   * Their active orders must still block another
+   * order for this comparison.
+   */
+  const groupQuotations =
+    await models.SalesQuotation.find(
+      sourceFilter,
+    )
+      .session(session)
+      .select("_id")
+      .lean();
+
+  const orderFilter = {
+    tenantId,
+
+    sourceQuotationId: {
+      $in: groupQuotations.map(
+        (record) => record._id,
+      ),
+    },
+
     isDeleted: false,
     status: { $ne: "CANCELLED" },
   };
 
   if (excludeOrderId) {
-    filter._id = { $ne: excludeOrderId };
+    orderFilter._id = {
+      $ne: excludeOrderId,
+    };
   }
 
-  const existing =
-    await models.SalesOrder.findOne(filter)
+  const existingOrder =
+    await models.SalesOrder.findOne(
+      orderFilter,
+    )
       .session(session)
-      .select("orderNumber")
+      .select(
+        "_id orderNumber status sourceQuotationId",
+      )
       .lean();
 
-  if (existing) {
+  if (existingOrder) {
     throw createError(
-      `Quotation already has active sales order ${existing.orderNumber}`,
+      `This comparison already has Sales Order ${existingOrder.orderNumber}. Another customer offer cannot be converted.`,
       409,
     );
   }
@@ -1617,23 +1701,15 @@ const calculateOrder = async ({
     session,
   });
 
-  const orderDate = parseDate(
-    payload.orderDate,
-    "Order date",
-  );
+  const orderDate = parseDate(payload.orderDate, "Order date");
 
   const expectedDeliveryDate = optionalDate(
     payload.expectedDeliveryDate,
     "Expected delivery date",
   );
 
-  if (
-    expectedDeliveryDate &&
-    expectedDeliveryDate < orderDate
-  ) {
-    throw createError(
-      "Expected delivery date cannot be before order date",
-    );
+  if (expectedDeliveryDate && expectedDeliveryDate < orderDate) {
+    throw createError("Expected delivery date cannot be before order date");
   }
 
   if (!TAX_MODES.includes(payload.taxMode)) {
@@ -1645,9 +1721,7 @@ const calculateOrder = async ({
     payload.items.length < 1 ||
     payload.items.length > 200
   ) {
-    throw createError(
-      "A sales order requires between 1 and 200 items",
-    );
+    throw createError("A sales order requires between 1 and 200 items");
   }
 
   let quotation = null;
@@ -1663,19 +1737,13 @@ const calculateOrder = async ({
   }
 
   const quotationLineMap = new Map(
-    (quotation?.items || []).map((item) => [
-      String(item.lineId),
-      item,
-    ]),
+    (quotation?.items || []).map((item) => [String(item.lineId), item]),
   );
 
   const productIds = [
     ...new Set(
       payload.items.map((item) =>
-        validateObjectId(
-          item.productId,
-          "productId",
-        ).toString(),
+        validateObjectId(item.productId, "productId").toString(),
       ),
     ),
   ];
@@ -1697,35 +1765,24 @@ const calculateOrder = async ({
   }
 
   const productMap = new Map(
-    products.map((product) => [
-      String(product._id),
-      product,
-    ]),
+    products.map((product) => [String(product._id), product]),
   );
 
   const existingLineMap = new Map(
-    (existingOrder?.items || []).map((item) => [
-      String(item.lineId),
-      item,
-    ]),
+    (existingOrder?.items || []).map((item) => [String(item.lineId), item]),
   );
 
   const seenLineIds = new Set();
   const seenQuotationLineIds = new Set();
 
-  const totals = Object.fromEntries(
-    AMOUNT_FIELDS.map((field) => [field, 0]),
-  );
+  const totals = Object.fromEntries(AMOUNT_FIELDS.map((field) => [field, 0]));
 
   const items = [];
 
   for (const [index, input] of payload.items.entries()) {
     const label = `Item ${index + 1}`;
 
-    const productId = validateObjectId(
-      input.productId,
-      `${label} productId`,
-    );
+    const productId = validateObjectId(input.productId, `${label} productId`);
 
     const product = productMap.get(String(productId));
 
@@ -1743,10 +1800,7 @@ const calculateOrder = async ({
 
     const previousLine = existingLineMap.get(lineKey);
 
-    if (
-      previousLine &&
-      String(previousLine.productId) !== String(productId)
-    ) {
+    if (previousLine && String(previousLine.productId) !== String(productId)) {
       throw createError(
         `${label} cannot reuse an existing lineId for a different product`,
         409,
@@ -1757,9 +1811,7 @@ const calculateOrder = async ({
 
     if (quotation) {
       if (!input.quotationLineId) {
-        throw createError(
-          `${label} must reference a source quotation line`,
-        );
+        throw createError(`${label} must reference a source quotation line`);
       }
 
       quotationLineId = validateObjectId(
@@ -1767,14 +1819,9 @@ const calculateOrder = async ({
         `${label} quotationLineId`,
       );
 
-      const sourceLine = quotationLineMap.get(
-        String(quotationLineId),
-      );
+      const sourceLine = quotationLineMap.get(String(quotationLineId));
 
-      if (
-        !sourceLine ||
-        String(sourceLine.productId) !== String(productId)
-      ) {
+      if (!sourceLine || String(sourceLine.productId) !== String(productId)) {
         throw createError(
           `${label} does not match the source quotation product`,
           409,
@@ -1782,9 +1829,7 @@ const calculateOrder = async ({
       }
 
       if (seenQuotationLineIds.has(String(quotationLineId))) {
-        throw createError(
-          "A quotation line cannot appear twice in an order",
-        );
+        throw createError("A quotation line cannot appear twice in an order");
       }
 
       seenQuotationLineIds.add(String(quotationLineId));
@@ -1819,27 +1864,17 @@ const calculateOrder = async ({
       );
 
       if (unitRatePaise > 100000000000) {
-        throw createError(
-          `${label} unit rate exceeds the supported range`,
-        );
+        throw createError(`${label} unit rate exceeds the supported range`);
       }
 
       if (
         input.unitRate !== undefined &&
-        rupeesToPaise(
-          input.unitRate,
-          `${label} unit rate`,
-        ) !== unitRatePaise
+        rupeesToPaise(input.unitRate, `${label} unit rate`) !== unitRatePaise
       ) {
-        throw createError(
-          `${label} unitRate and unitRatePaise disagree`,
-        );
+        throw createError(`${label} unitRate and unitRatePaise disagree`);
       }
     } else {
-      unitRatePaise = rupeesToPaise(
-        input.unitRate,
-        `${label} unit rate`,
-      );
+      unitRatePaise = rupeesToPaise(input.unitRate, `${label} unit rate`);
     }
 
     const gstRate = input.gstRate ?? product.gstRate;
@@ -1849,16 +1884,10 @@ const calculateOrder = async ({
     }
 
     if (payload.taxMode === "NONE" && gstRate !== 0) {
-      throw createError(
-        `${label} GST rate must be zero when tax mode is NONE`,
-      );
+      throw createError(`${label} GST rate must be zero when tax mode is NONE`);
     }
 
-    const grossAmountPaise = multiplyDivide(
-      unitRatePaise,
-      quantityMilli,
-      1000,
-    );
+    const grossAmountPaise = multiplyDivide(unitRatePaise, quantityMilli, 1000);
 
     const discountAmountPaise = multiplyDivide(
       grossAmountPaise,
@@ -1866,14 +1895,9 @@ const calculateOrder = async ({
       10000,
     );
 
-    const taxableAmountPaise =
-      grossAmountPaise - discountAmountPaise;
+    const taxableAmountPaise = grossAmountPaise - discountAmountPaise;
 
-    const taxAmountPaise = multiplyDivide(
-      taxableAmountPaise,
-      gstRate,
-      100,
-    );
+    const taxAmountPaise = multiplyDivide(taxableAmountPaise, gstRate, 100);
 
     let cgstAmountPaise = 0;
     let sgstAmountPaise = 0;
@@ -1891,17 +1915,13 @@ const calculateOrder = async ({
       quotationLineId,
       productId,
 
-      productCode:
-        previousLine?.productCode ?? product.productCode,
+      productCode: previousLine?.productCode ?? product.productCode,
 
-      productName:
-        previousLine?.productName ?? product.name,
+      productName: previousLine?.productName ?? product.name,
 
-      productType:
-        previousLine?.productType ?? product.type,
+      productType: previousLine?.productType ?? product.type,
 
-      unit:
-        previousLine?.unit ?? product.unit,
+      unit: previousLine?.unit ?? product.unit,
 
       hsnSacCode: previousLine
         ? previousLine.hsnSacCode
@@ -1921,40 +1941,30 @@ const calculateOrder = async ({
       sgstAmountPaise,
       igstAmountPaise,
 
-      totalAmountPaise: addAmounts(
-        taxableAmountPaise,
-        taxAmountPaise,
-      ),
+      totalAmountPaise: addAmounts(taxableAmountPaise, taxAmountPaise),
     };
 
     items.push(item);
 
     for (const field of AMOUNT_FIELDS) {
-      totals[field] = addAmounts(
-        totals[field],
-        item[field],
-      );
+      totals[field] = addAmounts(totals[field], item[field]);
     }
   }
 
   return {
     customerId: customer._id,
 
-    customerCode:
-      existingOrder?.customerCode ?? customer.customerCode,
+    customerCode: existingOrder?.customerCode ?? customer.customerCode,
 
-    customerName:
-      existingOrder?.customerName ?? customer.customerName,
+    customerName: existingOrder?.customerName ?? customer.customerName,
 
     customerGstNo: existingOrder
       ? existingOrder.customerGstNo
       : customer.gstNo || null,
 
     sourceQuotationId: quotation?._id || null,
-    sourceQuotationNumber:
-      quotation?.quotationNumber || null,
-    sourceQuotationRevision:
-      quotation?.revision || null,
+    sourceQuotationNumber: quotation?.quotationNumber || null,
+    sourceQuotationRevision: quotation?.revision || null,
 
     orderDate,
     expectedDeliveryDate,
@@ -1983,9 +1993,7 @@ const calculateOrder = async ({
 
     notes: normalizeText(payload.notes),
 
-    termsAndConditions: normalizeText(
-      payload.termsAndConditions,
-    ),
+    termsAndConditions: normalizeText(payload.termsAndConditions),
   };
 };
 
@@ -2016,12 +2024,7 @@ const createAudit = async ({
   );
 };
 
-const loadOrder = async ({
-  models,
-  tenantId,
-  orderNumber,
-  session,
-}) => {
+const loadOrder = async ({ models, tenantId, orderNumber, session }) => {
   const normalized = normalizeCode(orderNumber);
 
   if (!normalized) {
@@ -2062,9 +2065,7 @@ const validateBeforeConfirmation = async ({
   });
 
   const productIds = [
-    ...new Set(
-      order.items.map((item) => String(item.productId)),
-    ),
+    ...new Set(order.items.map((item) => String(item.productId))),
   ];
 
   const products = await models.Product.find({
@@ -2077,10 +2078,7 @@ const validateBeforeConfirmation = async ({
     .lean();
 
   if (products.length !== productIds.length) {
-    throw createError(
-      "One or more order products are no longer active",
-      409,
-    );
+    throw createError("One or more order products are no longer active", 409);
   }
 
   const productMap = new Map(
@@ -2090,10 +2088,7 @@ const validateBeforeConfirmation = async ({
   for (const item of order.items) {
     const product = productMap.get(String(item.productId));
 
-    if (
-      product.type !== item.productType ||
-      product.unit !== item.unit
-    ) {
+    if (product.type !== item.productType || product.unit !== item.unit) {
       throw createError(
         `Product type or unit changed for ${item.productName}. Review the draft before confirming.`,
         409,
@@ -2124,10 +2119,7 @@ const confirmOrderInTransaction = async (context) => {
   const { order, userId, session } = context;
 
   if (order.status !== "DRAFT") {
-    throw createError(
-      "Only draft sales orders can be confirmed",
-      409,
-    );
+    throw createError("Only draft sales orders can be confirmed", 409);
   }
 
   await validateBeforeConfirmation(context);
@@ -2150,17 +2142,8 @@ const confirmOrderInTransaction = async (context) => {
   return order;
 };
 
-const createOrderInTransaction = async (
-  context,
-  payload,
-) => {
-  const {
-    models,
-    tenantId,
-    userId,
-    connection,
-    session,
-  } = context;
+const createOrderInTransaction = async (context, payload) => {
+  const { models, tenantId, userId, connection, session } = context;
 
   const action = payload.action ?? "SAVE";
 
@@ -2180,15 +2163,10 @@ const createOrderInTransaction = async (
     });
   }
 
-  const orderNumber = await getNextSequence(
-    "SO",
-    tenantId.toString(),
-    3,
-    {
-      connection,
-      session,
-    },
-  );
+  const orderNumber = await getNextSequence("SO", tenantId.toString(), 3, {
+    connection,
+    session,
+  });
 
   const records = await models.SalesOrder.create(
     [
@@ -2228,10 +2206,7 @@ const createSalesOrder = async (args) =>
       throw createError("Sales Order payload is required");
     }
 
-    return createOrderInTransaction(
-      context,
-      args.payload,
-    );
+    return createOrderInTransaction(context, args.payload);
   });
 
 const getOrderByNumber = async (args) => {
@@ -2250,28 +2225,17 @@ const getOrderByNumber = async (args) => {
   return order;
 };
 
-const addDateRange = (
-  filter,
-  field,
-  fromValue,
-  toValue,
-) => {
+const addDateRange = (filter, field, fromValue, toValue) => {
   if (!fromValue && !toValue) {
     return;
   }
 
-  const from = fromValue
-    ? parseDate(fromValue, `${field} start`)
-    : null;
+  const from = fromValue ? parseDate(fromValue, `${field} start`) : null;
 
-  const to = toValue
-    ? parseDate(toValue, `${field} end`)
-    : null;
+  const to = toValue ? parseDate(toValue, `${field} end`) : null;
 
   if (from && to && to < from) {
-    throw createError(
-      `${field} end cannot be before its start`,
-    );
+    throw createError(`${field} end cannot be before its start`);
   }
 
   filter[field] = {};
@@ -2282,10 +2246,7 @@ const addDateRange = (
 
   if (to) {
     // Include the full final day for date-only filters.
-    if (
-      typeof toValue === "string" &&
-      /^\d{4}-\d{2}-\d{2}$/.test(toValue)
-    ) {
+    if (typeof toValue === "string" && /^\d{4}-\d{2}-\d{2}$/.test(toValue)) {
       const nextDay = new Date(to);
       nextDay.setUTCDate(nextDay.getUTCDate() + 1);
       filter[field].$lt = nextDay;
@@ -2309,10 +2270,7 @@ const getSalesOrders = async (args) => {
     expectedDeliveryTo,
   } = args;
 
-  const page = Math.max(
-    Math.floor(Number(args.page) || 1),
-    1,
-  );
+  const page = Math.max(Math.floor(Number(args.page) || 1), 1);
 
   const limit = Math.min(
     Math.max(Math.floor(Number(args.limit) || 20), 1),
@@ -2333,10 +2291,7 @@ const getSalesOrders = async (args) => {
   }
 
   if (customerId) {
-    filter.customerId = validateObjectId(
-      customerId,
-      "customerId",
-    );
+    filter.customerId = validateObjectId(customerId, "customerId");
   }
 
   if (sourceQuotationId) {
@@ -2349,10 +2304,7 @@ const getSalesOrders = async (args) => {
   const searchText = normalizeText(search);
 
   if (searchText) {
-    const regex = new RegExp(
-      escapeRegex(searchText),
-      "i",
-    );
+    const regex = new RegExp(escapeRegex(searchText), "i");
 
     filter.$or = [
       { orderNumber: regex },
@@ -2361,12 +2313,7 @@ const getSalesOrders = async (args) => {
     ];
   }
 
-  addDateRange(
-    filter,
-    "orderDate",
-    orderDateFrom,
-    orderDateTo,
-  );
+  addDateRange(filter, "orderDate", orderDateFrom, orderDateTo);
 
   addDateRange(
     filter,
@@ -2408,28 +2355,17 @@ const updateSalesOrder = async (args) =>
     const order = await loadOrder(context);
 
     if (order.status !== "DRAFT") {
-      throw createError(
-        "Only draft sales orders can be edited",
-        409,
-      );
+      throw createError("Only draft sales orders can be edited", 409);
     }
 
-    assertVersion(
-      order,
-      args.version ?? payload.version,
-    );
+    assertVersion(order, args.version ?? payload.version);
 
     if (
       !EDITABLE_FIELDS.some((field) =>
-        Object.prototype.hasOwnProperty.call(
-          payload,
-          field,
-        ),
+        Object.prototype.hasOwnProperty.call(payload, field),
       )
     ) {
-      throw createError(
-        "Provide at least one editable field",
-      );
+      throw createError("Provide at least one editable field");
     }
 
     const oldData = order.toObject();
@@ -2464,12 +2400,7 @@ const updateSalesOrder = async (args) =>
     };
 
     for (const field of EDITABLE_FIELDS) {
-      if (
-        Object.prototype.hasOwnProperty.call(
-          payload,
-          field,
-        )
-      ) {
+      if (Object.prototype.hasOwnProperty.call(payload, field)) {
         merged[field] = payload[field];
       }
     }
@@ -2509,10 +2440,7 @@ const confirmSalesOrder = async (args) =>
   runTransaction(args, async (context) => {
     const order = await loadOrder(context);
 
-    assertVersion(
-      order,
-      args.version ?? args.payload?.version,
-    );
+    assertVersion(order, args.version ?? args.payload?.version);
 
     await confirmOrderInTransaction({
       ...context,
@@ -2524,22 +2452,13 @@ const confirmSalesOrder = async (args) =>
 
 const transitionOrder = async (
   args,
-  {
-    allowedStatuses,
-    targetStatus,
-    action,
-    dateField,
-    userField,
-  },
+  { allowedStatuses, targetStatus, action, dateField, userField },
 ) =>
   runTransaction(args, async (context) => {
     const { userId, session } = context;
     const order = await loadOrder(context);
 
-    assertVersion(
-      order,
-      args.version ?? args.payload?.version,
-    );
+    assertVersion(order, args.version ?? args.payload?.version);
 
     if (!allowedStatuses.includes(order.status)) {
       throw createError(
@@ -2557,8 +2476,7 @@ const transitionOrder = async (
 
     if (targetStatus === "CANCELLED") {
       order.cancellationReason = normalizeText(
-        args.cancellationReason ??
-          args.payload?.cancellationReason,
+        args.cancellationReason ?? args.payload?.cancellationReason,
       );
     }
 
@@ -2594,11 +2512,7 @@ const completeSalesOrder = async (args) =>
 
 const cancelSalesOrder = async (args) =>
   transitionOrder(args, {
-    allowedStatuses: [
-      "DRAFT",
-      "CONFIRMED",
-      "IN_PROGRESS",
-    ],
+    allowedStatuses: ["DRAFT", "CONFIRMED", "IN_PROGRESS"],
     targetStatus: "CANCELLED",
     action: "CANCEL",
     dateField: "cancelledAt",
@@ -2610,16 +2524,10 @@ const deleteSalesOrder = async (args) =>
     const { userId, session } = context;
     const order = await loadOrder(context);
 
-    assertVersion(
-      order,
-      args.version ?? args.payload?.version,
-    );
+    assertVersion(order, args.version ?? args.payload?.version);
 
     if (order.status !== "DRAFT") {
-      throw createError(
-        "Only draft sales orders can be deleted",
-        409,
-      );
+      throw createError("Only draft sales orders can be deleted", 409);
     }
 
     const oldData = order.toObject();
@@ -2641,80 +2549,201 @@ const deleteSalesOrder = async (args) =>
     return true;
   });
 
+// const convertQuotationToSalesOrder = async (args) =>
+//   runTransaction(args, async (context) => {
+//     const payload = args.payload || {};
+
+//     const quotation = await getAcceptedQuotation({
+//       ...context,
+//       quotationId: args.quotationId,
+//     });
+
+//     await ensureNoExistingConversion({
+//       ...context,
+//       quotationId: quotation._id,
+//     });
+
+//     const orderPayload = {
+//       sourceQuotationId: quotation._id,
+//       customerId: quotation.customerId,
+
+//       orderDate:
+//         payload.orderDate || localDateString(),
+
+//       expectedDeliveryDate:
+//         payload.expectedDeliveryDate ?? null,
+
+//       billingAddress:
+//         payload.billingAddress !== undefined
+//           ? payload.billingAddress
+//           : quotation.billingAddress,
+
+//       shippingAddress:
+//         payload.shippingAddress !== undefined
+//           ? payload.shippingAddress
+//           : quotation.shippingAddress,
+
+//       taxMode:
+//         payload.taxMode || quotation.taxMode,
+
+//       paymentTerms:
+//         payload.paymentTerms ?? quotation.paymentTerms,
+
+//       deliveryTerms:
+//         payload.deliveryTerms ?? null,
+
+//       items:
+//         payload.items ??
+//         quotation.items.map((item) => ({
+//           quotationLineId: item.lineId,
+//           productId: item.productId,
+//           specification: item.specification,
+//           quantity: item.quantity,
+//           unitRatePaise: item.unitRatePaise,
+//           discountPercent: item.discountPercent,
+//           gstRate: item.gstRate,
+//         })),
+
+//       notes:
+//         payload.notes !== undefined
+//           ? payload.notes
+//           : quotation.notes,
+
+//       termsAndConditions:
+//         payload.termsAndConditions !== undefined
+//           ? payload.termsAndConditions
+//           : quotation.termsAndConditions,
+
+//       action: payload.action || "SAVE",
+//     };
+
+//     return createOrderInTransaction(
+//       context,
+//       orderPayload,
+//     );
+//   });
 const convertQuotationToSalesOrder = async (args) =>
   runTransaction(args, async (context) => {
+    const { models, tenantId, session } = context;
+
     const payload = args.payload || {};
+
+    if (!Number.isSafeInteger(payload.version) || payload.version < 0) {
+      throw createError(
+        "Quotation version is required. Refresh the comparison.",
+      );
+    }
 
     const quotation = await getAcceptedQuotation({
       ...context,
       quotationId: args.quotationId,
     });
 
+    if (quotation.__v !== payload.version) {
+      throw createError(
+        "This offer changed. Refresh the comparison before selecting it.",
+        409,
+      );
+    }
+
+    if (
+      payload.comparisonGroupId &&
+      String(quotation.comparisonGroupId) !== String(payload.comparisonGroupId)
+    ) {
+      throw createError(
+        "The selected quotation does not belong to this comparison",
+        409,
+      );
+    }
+
+    const latestRevision = await models.SalesQuotation.findOne({
+      tenantId,
+      quotationFamilyId: quotation.quotationFamilyId,
+      isDeleted: false,
+    })
+      .sort({ revision: -1, _id: -1 })
+      .session(session)
+      .select("_id")
+      .lean();
+
+    if (
+      !latestRevision ||
+      String(latestRevision._id) !== String(quotation._id)
+    ) {
+      throw createError("Select the latest quotation revision", 409);
+    }
+
     await ensureNoExistingConversion({
       ...context,
       quotationId: quotation._id,
     });
 
+    /*
+     * Serialize conversion against another conversion
+     * or a concurrent edit of this quotation.
+     */
+    const locked = await models.SalesQuotation.updateOne(
+      {
+        _id: quotation._id,
+        tenantId,
+        isDeleted: false,
+        status: quotation.status,
+        __v: payload.version,
+      },
+      {
+        $inc: { __v: 1 },
+      },
+      {
+        session,
+        timestamps: false,
+      },
+    );
+
+    if (locked.modifiedCount !== 1) {
+      throw createError(
+        "The selected offer changed. Refresh and try again.",
+        409,
+      );
+    }
+
     const orderPayload = {
       sourceQuotationId: quotation._id,
       customerId: quotation.customerId,
 
-      orderDate:
-        payload.orderDate || localDateString(),
+      orderDate: payload.orderDate || localDateString(),
 
-      expectedDeliveryDate:
-        payload.expectedDeliveryDate ?? null,
+      expectedDeliveryDate: Object.prototype.hasOwnProperty.call(
+        payload,
+        "expectedDeliveryDate",
+      )
+        ? payload.expectedDeliveryDate
+        : quotation.expectedDeliveryDate,
 
-      billingAddress:
-        payload.billingAddress !== undefined
-          ? payload.billingAddress
-          : quotation.billingAddress,
+      billingAddress: quotation.billingAddress,
+      shippingAddress: quotation.shippingAddress,
 
-      shippingAddress:
-        payload.shippingAddress !== undefined
-          ? payload.shippingAddress
-          : quotation.shippingAddress,
+      taxMode: quotation.taxMode,
+      paymentTerms: quotation.paymentTerms,
+      deliveryTerms: quotation.deliveryTerms,
 
-      taxMode:
-        payload.taxMode || quotation.taxMode,
+      items: quotation.items.map((item) => ({
+        quotationLineId: item.lineId,
+        productId: item.productId,
+        specification: item.specification,
+        quantity: item.quantity,
+        unitRatePaise: item.unitRatePaise,
+        discountPercent: item.discountPercent,
+        gstRate: item.gstRate,
+      })),
 
-      paymentTerms:
-        payload.paymentTerms ?? quotation.paymentTerms,
-
-      deliveryTerms:
-        payload.deliveryTerms ?? null,
-
-      items:
-        payload.items ??
-        quotation.items.map((item) => ({
-          quotationLineId: item.lineId,
-          productId: item.productId,
-          specification: item.specification,
-          quantity: item.quantity,
-          unitRatePaise: item.unitRatePaise,
-          discountPercent: item.discountPercent,
-          gstRate: item.gstRate,
-        })),
-
-      notes:
-        payload.notes !== undefined
-          ? payload.notes
-          : quotation.notes,
-
-      termsAndConditions:
-        payload.termsAndConditions !== undefined
-          ? payload.termsAndConditions
-          : quotation.termsAndConditions,
+      notes: quotation.notes,
+      termsAndConditions: quotation.termsAndConditions,
 
       action: payload.action || "SAVE",
     };
 
-    return createOrderInTransaction(
-      context,
-      orderPayload,
-    );
+    return createOrderInTransaction(context, orderPayload);
   });
-
 module.exports = {
   createSalesOrder,
   getSalesOrders,

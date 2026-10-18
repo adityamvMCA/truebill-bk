@@ -17,6 +17,17 @@ const itemSchema = new mongoose.Schema(
       ref: "Product",
       required: true,
     },
+    salesOrderLineId: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: null,
+    },
+
+    specification: {
+      type: String,
+      trim: true,
+      maxlength: 1000,
+      default: null,
+    },
 
     productCode: {
       type: String,
@@ -103,7 +114,56 @@ const salesInvoiceSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+    sourceSalesOrderId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "SalesOrder",
+      default: null,
+      immutable: true,
+    },
 
+    sourceSalesOrderNumber: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      maxlength: 100,
+      default: null,
+      immutable: true,
+    },
+
+    sourceSalesOrderVersion: {
+      type: Number,
+      min: 0,
+      default: null,
+      immutable: true,
+    },
+
+    billingAddress: {
+      type: String,
+      trim: true,
+      maxlength: 2000,
+      default: null,
+    },
+
+    shippingAddress: {
+      type: String,
+      trim: true,
+      maxlength: 2000,
+      default: null,
+    },
+
+    deliveryTerms: {
+      type: String,
+      trim: true,
+      maxlength: 1000,
+      default: null,
+    },
+
+    termsAndConditions: {
+      type: String,
+      trim: true,
+      maxlength: 5000,
+      default: null,
+    },
     invoiceNumber: {
       type: String,
       required: true,
@@ -205,11 +265,10 @@ const salesInvoiceSchema = new mongoose.Schema(
 
     status: {
       type: String,
-      enum: ["DRAFT", "POSTED", "CANCELLED"],
-      default: "DRAFT",
+      enum: ["CREATED", "POSTED", "CANCELLED"],
+      default: "CREATED",
       required: true,
     },
-
     paymentStatus: {
       type: String,
       enum: ["UNPAID", "PARTIALLY_PAID", "PAID"],
@@ -291,7 +350,28 @@ salesInvoiceSchema.index({
   status: 1,
   dueDate: 1,
 });
+salesInvoiceSchema.index(
+  {
+    tenantId: 1,
+    sourceSalesOrderId: 1,
+  },
+  {
+    name: "unique_active_invoice_per_sales_order",
+    unique: true,
 
+    partialFilterExpression: {
+      sourceSalesOrderId: {
+        $type: "objectId",
+      },
+
+      isDeleted: false,
+
+      status: {
+        $in: ["CREATED", "POSTED"],
+      },
+    },
+  },
+);
 module.exports =
   mongoose.models.SalesInvoice ||
   mongoose.model("SalesInvoice", salesInvoiceSchema);

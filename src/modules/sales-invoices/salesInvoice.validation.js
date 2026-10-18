@@ -68,8 +68,8 @@ const createSalesInvoiceSchema = Joi.object({
   ...editableFields,
 
   action: Joi.string()
-    .valid("SAVE_DRAFT", "SAVE_AND_POST")
-    .default("SAVE_DRAFT"),
+    .valid("SAVE_CREATED", "SAVE_AND_POST")
+    .default("SAVE_CREATED"),
 }).unknown(false);
 
 const updateSalesInvoiceSchema = Joi.object({
@@ -87,7 +87,7 @@ const listSalesInvoicesSchema = Joi.object({
 
   customerId: objectId,
 
-  status: Joi.string().valid("DRAFT", "POSTED", "CANCELLED"),
+  status: Joi.string().valid("CREATED", "POSTED", "CANCELLED"),
 
   paymentStatus: Joi.string().valid("UNPAID", "PARTIALLY_PAID", "PAID"),
 

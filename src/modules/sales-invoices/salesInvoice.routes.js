@@ -3,7 +3,11 @@ const express = require("express");
 const verifyToken = require("../../middleware/authMiddleware");
 const resolveTenant = require("../../middleware/tenantMiddleware");
 const requirePermission = require("../../middleware/permissionMiddleware");
-
+const { createFromSalesOrder } = require("./salesInvoiceFromOrder.controller");
+const {
+  validateInvoiceOrderParams,
+  validateInvoiceOrderBody,
+} = require("./salesInvoiceFromOrder.validation");
 const {
   createSalesInvoice,
   getSalesInvoices,
@@ -78,6 +82,15 @@ router.delete(
   requirePermission("salesInvoice.delete"),
   validateSalesInvoiceParams,
   deleteSalesInvoice,
+);
+router.post(
+  "/from-sales-order/:orderNumber",
+
+  requirePermission("salesInvoice.create"),
+  requirePermission("salesOrder.view"),
+  validateInvoiceOrderParams,
+  validateInvoiceOrderBody,
+  createFromSalesOrder,
 );
 
 module.exports = router;

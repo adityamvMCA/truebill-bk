@@ -305,27 +305,32 @@ const quotationIdParamsSchema = Joi.object({
 }).unknown(false);
 
 const convertQuotationSchema = Joi.object({
-  orderDate: optionalDate,
-  expectedDeliveryDate: optionalDate,
+  version: Joi.number()
+    .integer()
+    .min(0)
+    .max(Number.MAX_SAFE_INTEGER)
+    .strict()
+    .required(),
 
-  billingAddress: optionalText(2000),
-  shippingAddress: optionalText(2000),
+  comparisonGroupId: Joi.string()
+    .trim()
+    .hex()
+    .length(24),
 
-  taxMode: Joi.string().valid(...TAX_MODES),
+  orderDate: Joi.string()
+    .trim()
+    .isoDate()
+    .required(),
 
-  paymentTerms: optionalText(100),
-  deliveryTerms: optionalText(1000),
-
-  items: itemsSchema,
-
-  notes: optionalText(1000),
-  termsAndConditions: optionalText(5000),
+  expectedDeliveryDate: Joi.string()
+    .trim()
+    .isoDate()
+    .allow(null, ""),
 
   action: Joi.string()
     .valid("SAVE", "CONFIRM")
     .default("SAVE"),
 }).unknown(false);
-
 const validate = (schema, source = "body") => {
   return (req, res, next) => {
     const { error, value } = schema.validate(

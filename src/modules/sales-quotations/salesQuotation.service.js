@@ -980,20 +980,138 @@ const deleteDraftQuotation = async ({
 };
 
 const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const addQuotationConversionStatus = async ({
+  SalesQuotation,
+  SalesOrder,
+  tenantId,
+  quotations,
+}) => {
+  if (!quotations.length) {
+    return [];
+  }
 
-const getQuotations = async ({ tenant, query }) => {
-  const connection = getReadyTenantConnection(tenant);
+  const groupIds = [
+    ...new Set(
+      quotations
+        .map((quotation) =>
+          quotation.comparisonGroupId
+            ? String(quotation.comparisonGroupId)
+            : null,
+        )
+        .filter(Boolean),
+    ),
+  ];
 
-  const models = getTenantAccountingModels(connection);
+  /*
+   * Include every revision in these groups, even
+   * deleted quotation records, so an active order
+   * from an older revision is not missed.
+   */
+  const groupMembers = groupIds.length
+    ? await SalesQuotation.find({
+        tenantId,
+        comparisonGroupId: {
+          $in: groupIds,
+        },
+      })
+        .select("_id comparisonGroupId")
+        .lean()
+    : [];
 
-  const { SalesQuotation } = models;
+  const sourceIds = [
+    ...new Set([
+      ...quotations.map((quotation) => String(quotation._id)),
 
-  const tenantId = tenant._id ?? tenant.id;
+      ...groupMembers.map((quotation) => String(quotation._id)),
+    ]),
+  ];
 
-  const page = Math.max(Math.floor(Number(query.page) || 1), 1);
+  const orders = await SalesOrder.find({
+    tenantId,
+
+    sourceQuotationId: {
+      $in: sourceIds,
+    },
+
+    isDeleted: false,
+    status: { $ne: "CANCELLED" },
+  })
+    .sort({ createdAt: 1, _id: 1 })
+    .select("_id orderNumber status sourceQuotationId")
+    .lean();
+
+  const groupByQuotation = new Map(
+    groupMembers.map((quotation) => [
+      String(quotation._id),
+      String(quotation.comparisonGroupId),
+    ]),
+  );
+
+  const orderByQuotation = new Map();
+  const orderByGroup = new Map();
+
+  for (const order of orders) {
+    const sourceId = String(order.sourceQuotationId);
+
+    if (!orderByQuotation.has(sourceId)) {
+      orderByQuotation.set(sourceId, order);
+    }
+
+    const groupId = groupByQuotation.get(sourceId);
+
+    if (groupId && !orderByGroup.has(groupId)) {
+      orderByGroup.set(groupId, order);
+    }
+  }
+
+  return quotations.map((quotation) => {
+    const directOrder = orderByQuotation.get(String(quotation._id)) || null;
+
+    const groupOrder = quotation.comparisonGroupId
+      ? orderByGroup.get(String(quotation.comparisonGroupId)) || null
+      : null;
+
+    return {
+      ...quotation,
+
+      conversionStatus: directOrder
+        ? "CONVERTED"
+        : groupOrder
+          ? "COMPARISON_CLOSED"
+          : "OPEN",
+
+      existingOrder: directOrder,
+      groupExistingOrder: groupOrder,
+    };
+  });
+};const getQuotations = async ({
+  tenant,
+  query = {},
+}) => {
+  const connection =
+    getReadyTenantConnection(tenant);
+
+  const models =
+    getTenantAccountingModels(connection);
+
+  const {
+    SalesQuotation,
+    SalesOrder,
+  } = models;
+
+  const tenantId =
+    tenant._id ?? tenant.id;
+
+  const page = Math.max(
+    Math.floor(Number(query.page) || 1),
+    1,
+  );
 
   const limit = Math.min(
-    Math.max(Math.floor(Number(query.limit) || 20), 1),
+    Math.max(
+      Math.floor(Number(query.limit) || 20),
+      1,
+    ),
     100,
   );
 
@@ -1003,37 +1121,50 @@ const getQuotations = async ({ tenant, query }) => {
   };
 
   if (query.customerId) {
-    filter.customerId = query.customerId;
+    filter.customerId =
+      query.customerId;
   }
 
   if (query.status) {
-    filter.status = query.status;
+    filter.status =
+      query.status;
   }
 
   if (query.comparisonGroupId) {
-    filter.comparisonGroupId = query.comparisonGroupId;
+    filter.comparisonGroupId =
+      query.comparisonGroupId;
   }
 
   if (query.quotationFamilyId) {
-    filter.quotationFamilyId = query.quotationFamilyId;
+    filter.quotationFamilyId =
+      query.quotationFamilyId;
   }
 
-  if (query.validUntilFrom || query.validUntilTo) {
+  if (
+    query.validUntilFrom ||
+    query.validUntilTo
+  ) {
     filter.validUntil = {};
 
     if (query.validUntilFrom) {
-      filter.validUntil.$gte = new Date(query.validUntilFrom);
+      filter.validUntil.$gte =
+        new Date(query.validUntilFrom);
     }
 
     if (query.validUntilTo) {
-      filter.validUntil.$lte = new Date(query.validUntilTo);
+      filter.validUntil.$lte =
+        new Date(query.validUntilTo);
     }
   }
 
-  const searchText = normalizeText(query.search);
+  const searchText =
+    normalizeText(query.search);
 
   if (searchText) {
-    const regex = new RegExp(escapeRegex(searchText), "i");
+    const regex = new RegExp(
+      escapeRegex(searchText),
+      "i",
+    );
 
     filter.$or = [
       {
@@ -1051,11 +1182,13 @@ const getQuotations = async ({ tenant, query }) => {
     ];
   }
 
+  // First fetch the quotation page and total count.
   const [data, total] = await Promise.all([
     SalesQuotation.find(filter)
       .sort({
         quotationDate: -1,
         createdAt: -1,
+        _id: -1,
       })
       .skip((page - 1) * limit)
       .limit(limit)
@@ -1064,17 +1197,27 @@ const getQuotations = async ({ tenant, query }) => {
     SalesQuotation.countDocuments(filter),
   ]);
 
+  // Then enrich the fetched quotations.
+  const enrichedData =
+    await addQuotationConversionStatus({
+      SalesQuotation,
+      SalesOrder,
+      tenantId,
+      quotations: data,
+    });
+
   return {
-    data,
+    data: enrichedData,
+
     pagination: {
       page,
       limit,
       total,
-      totalPages: Math.ceil(total / limit),
+      totalPages:
+        Math.ceil(total / limit),
     },
   };
 };
-
 const getQuotationById = async ({ tenant, quotationId }) => {
   const connection = getReadyTenantConnection(tenant);
 
@@ -1098,51 +1241,118 @@ const getQuotationById = async ({ tenant, quotationId }) => {
 
   return quotation;
 };
-
 const compareQuotations = async ({ tenant, comparisonGroupId }) => {
+  validateObjectId(comparisonGroupId, "comparisonGroupId");
+
   const connection = getReadyTenantConnection(tenant);
 
-  const models = getTenantAccountingModels(connection);
-
-  const { SalesQuotation } = models;
+  const { SalesQuotation, SalesOrder } = getTenantAccountingModels(connection);
 
   const tenantId = tenant._id ?? tenant.id;
 
-  validateObjectId(comparisonGroupId, "comparisonGroupId");
-
-  const quotations = await SalesQuotation.find({
+  /*
+   * Fetch every revision, including deleted ones,
+   * so existing orders are not missed.
+   */
+  const allQuotations = await SalesQuotation.find({
     tenantId,
     comparisonGroupId,
-    isDeleted: false,
   })
     .sort({
-      customerId: 1,
       quotationFamilyId: 1,
-      revision: 1,
+      revision: -1,
+      _id: -1,
     })
     .lean();
 
-  if (!quotations.length) {
-    throw createError("No quotations found for this comparison group", 404);
+  if (!allQuotations.length) {
+    throw createError("Comparison group not found", 404);
   }
 
   const latestByFamily = new Map();
 
-  for (const quotation of quotations) {
-    const familyId = String(quotation.quotationFamilyId);
+  for (const quotation of allQuotations) {
+    if (quotation.isDeleted) {
+      continue;
+    }
 
-    const current = latestByFamily.get(familyId);
+    const familyKey = String(quotation.quotationFamilyId || quotation._id);
 
-    if (!current || quotation.revision > current.revision) {
-      latestByFamily.set(familyId, quotation);
+    if (!latestByFamily.has(familyKey)) {
+      latestByFamily.set(familyKey, quotation);
     }
   }
 
-  const latestQuotations = [...latestByFamily.values()];
+  const existingOrders = await SalesOrder.find({
+    tenantId,
+
+    sourceQuotationId: {
+      $in: allQuotations.map((quotation) => quotation._id),
+    },
+
+    isDeleted: false,
+    status: { $ne: "CANCELLED" },
+  })
+    .sort({ createdAt: 1, _id: 1 })
+    .select("_id orderNumber status sourceQuotationId")
+    .lean();
+
+  const groupExistingOrder = existingOrders[0] || null;
+
+  const quotationsById = new Map(
+    allQuotations.map((quotation) => [String(quotation._id), quotation]),
+  );
+
+  const sourceQuotation = groupExistingOrder
+    ? quotationsById.get(String(groupExistingOrder.sourceQuotationId))
+    : null;
+
+  const comparisonOrder = groupExistingOrder
+    ? {
+        ...groupExistingOrder,
+
+        customerName: sourceQuotation?.customerName || null,
+
+        quotationNumber: sourceQuotation?.quotationNumber || null,
+
+        revision: sourceQuotation?.revision || null,
+      }
+    : null;
+
+  const ordersBySource = new Map(
+    existingOrders.map((order) => [String(order.sourceQuotationId), order]),
+  );
 
   return {
-    comparisonGroupId,
-    quotations: latestQuotations,
+    comparisonGroupId: String(comparisonGroupId),
+
+    conversionClosed: Boolean(comparisonOrder),
+
+    groupExistingOrder: comparisonOrder,
+
+    activeOrderCount: existingOrders.length,
+
+    quotations: Array.from(latestByFamily.values()).map((quotation) => {
+      const existingOrder = ordersBySource.get(String(quotation._id)) || null;
+
+      const eligibleStatus = ["DRAFT", "ISSUED", "ACCEPTED"].includes(
+        quotation.status,
+      );
+
+      return {
+        ...quotation,
+
+        existingOrder,
+
+        canConvert: eligibleStatus && !comparisonOrder,
+
+        conversionBlockedReason: comparisonOrder
+          ? `Sales Order ${comparisonOrder.orderNumber} already exists for this comparison`
+          : !eligibleStatus
+            ? "This quotation is not eligible for conversion"
+            : null,
+      };
+    }),
   };
 };
 const getQuotationByNumber = async ({ tenant, quotationNumber, revision }) => {
@@ -1179,6 +1389,7 @@ const getQuotationByNumber = async ({ tenant, quotationNumber, revision }) => {
 
   return quotation;
 };
+
 module.exports = {
   createQuotation,
   updateDraftQuotation,
