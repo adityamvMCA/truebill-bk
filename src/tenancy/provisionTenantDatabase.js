@@ -28,6 +28,7 @@ const MODEL_NAMES = [
   "SupplierPayment",
   "SalesQuotation",
   "DeliveryNote",
+  "TaxConfiguration",
 ];
 
 const provisionTenantDatabase = async ({ tenant, userId = null }) => {

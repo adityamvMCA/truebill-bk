@@ -12,6 +12,11 @@ const SALES_ORDER_PERMISSIONS = [
   "salesOrder.complete",
   "salesOrder.cancel",
   "salesOrder.delete",
+  "salesReturn.view",
+  "salesReturn.create",
+  "salesReturn.view",
+  "salesReturn.update",
+  "salesReturn.delete",
 ];
 const DELIVERY_NOTE_PERMISSIONS = [
   "deliveryNote.view",
@@ -83,6 +88,9 @@ const ROLE_PERMISSIONS = {
     "salesQuotation.update",
     "salesQuotation.issue",
     "salesQuotation.delete",
+    "salesReturn.post",
+    "taxConfiguration.view",
+    "taxConfiguration.update",
   ],
 
   accountant: [

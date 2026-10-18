@@ -10,6 +10,12 @@ const FEATURE_TREE = {
     "sales.creditNotes",
     "sales.reports",
     "salesOrder.create",
+
+    "salesReturn.view",
+    "salesReturn.create",
+    "salesReturn.update",
+    "salesReturn.delete",
+    "salesReturn.post",
   ],
 
   purchase: [
@@ -21,7 +27,7 @@ const FEATURE_TREE = {
     "purchase.invoices",
     "purchase.debitNotes",
     "purchase.reports",
-    "purchase.supplierPayments"
+    "purchase.supplierPayments",
   ],
 
   inventory: [
@@ -42,7 +48,8 @@ const FEATURE_TREE = {
     "accounting.reports",
   ],
 
-  gst: ["gst.summary", "gst.gstrReports", "gst.taxConfiguration"],
+  gst: ["gst.summary", "gst.gstrReports", "gst.taxConfiguration", "taxConfiguration.view",
+    "taxConfiguration.update",],
 
   bank: [
     "bank.accounts",
@@ -159,6 +166,7 @@ const PLANS = {
       "gst.eInvoice",
       "gst.eWayBill",
       "settings.auditLogs",
+      "sales",
     ],
     limits: {
       users: 10,

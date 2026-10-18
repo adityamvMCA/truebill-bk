@@ -29,6 +29,8 @@ const outstandingRoutes = require("./modules/outstanding/outstanding.routes");
 const salesQuotationRoutes = require("./modules/sales-quotations/salesQuotation.routes");
 const salesOrderRoutes = require("./modules/sales-orders/salesOrder.routes");
 const deliveryNoteRoutes = require("./modules/delivery-notes/deliveryNote.routes");
+const salesReturnRoutes = require("./modules/sales-returns/salesReturn.routes");
+const taxConfigurationRoutes = require("./modules/accounting/taxconfiguration/taxConfiguration.routes");
 const app = express();
 
 app.set("trust proxy", 1);
@@ -128,6 +130,8 @@ app.use("/api/outstanding", outstandingRoutes);
 app.use("/api/sales-quotations", salesQuotationRoutes);
 app.use("/api/sales-orders", salesOrderRoutes);
 app.use("/api/delivery-notes", deliveryNoteRoutes);
+app.use("/api/sales-returns", salesReturnRoutes);
+app.use("/api/tax-configuration", taxConfigurationRoutes);
 app.use((req, res) =>
   res.status(404).json({
     success: false,

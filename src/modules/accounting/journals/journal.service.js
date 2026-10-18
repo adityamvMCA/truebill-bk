@@ -144,6 +144,7 @@ const postJournal = async ({
     MANUAL_JOURNAL: "MJ",
     SALES_INVOICE: "SI",
     CUSTOMER_RECEIPT: "CR",
+     SALES_RETURN: "SR",
   };
 
   if (!Object.prototype.hasOwnProperty.call(sourcePrefixes, sourceType)) {

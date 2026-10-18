@@ -1,1209 +1,3 @@
-// const mongoose = require("mongoose");
-
-// const SalesOrder = require("./salesOrder.model");
-
-// const SalesQuotation = require("../sales-quotations/salesQuotation.model");
-
-// const Customer = require("../customers/customer.model");
-
-// const Product = require("../products/product.model");
-
-// const AuditLog = require("../../models/AuditLog");
-
-// const getNextSequence = require("../../utils/sequenceGenerator");
-
-// const GST_RATES = [0, 3, 5, 12, 18, 28];
-
-// const TAX_MODES = ["NONE", "INTRA_STATE", "INTER_STATE"];
-
-// const AMOUNT_FIELDS = [
-//   "grossAmountPaise",
-//   "discountAmountPaise",
-//   "taxableAmountPaise",
-//   "cgstAmountPaise",
-//   "sgstAmountPaise",
-//   "igstAmountPaise",
-//   "totalAmountPaise",
-// ];
-
-// const createError = (message, statusCode = 400) => {
-//   const error = new Error(message);
-
-//   error.statusCode = statusCode;
-
-//   return error;
-// };
-
-// const normalizeText = (value) => {
-//   const text = String(value ?? "").trim();
-
-//   return text || null;
-// };
-
-// const normalizeCode = (value) => normalizeText(value)?.toUpperCase() || null;
-
-// const validateObjectId = (value, fieldName) => {
-//   if (!mongoose.isObjectIdOrHexString(value)) {
-//     throw createError(`${fieldName} must be a valid ObjectId`);
-//   }
-
-//   return new mongoose.Types.ObjectId(value);
-// };
-
-// const assertSafeAmount = (value, fieldName) => {
-//   if (!Number.isSafeInteger(value) || value < 0) {
-//     throw createError(`${fieldName} exceeds the supported range`);
-//   }
-
-//   return value;
-// };
-
-// const addAmounts = (first, second) =>
-//   assertSafeAmount(Number(first) + Number(second), "Amount");
-
-// const multiplyDivide = (first, second, divisor) => {
-//   assertSafeAmount(first, "Amount");
-//   assertSafeAmount(second, "Amount");
-
-//   if (!Number.isSafeInteger(divisor) || divisor <= 0) {
-//     throw createError("Invalid calculation divisor");
-//   }
-
-//   const numerator = BigInt(first) * BigInt(second);
-
-//   const denominator = BigInt(divisor);
-
-//   const rounded = (numerator + denominator / 2n) / denominator;
-
-//   return assertSafeAmount(Number(rounded), "Amount");
-// };
-
-// const rupeesToPaise = (value, fieldName) => {
-//   if (
-//     value === null ||
-//     value === undefined ||
-//     typeof value !== "number" ||
-//     !Number.isFinite(value) ||
-//     value < 0
-//   ) {
-//     throw createError(`${fieldName} must be a valid non-negative amount`);
-//   }
-
-//   const scaled = value * 100;
-
-//   const paise = Math.round(scaled);
-
-//   if (!Number.isSafeInteger(paise) || Math.abs(scaled - paise) > 0.000001) {
-//     throw createError(`${fieldName} must have at most two decimal places`);
-//   }
-
-//   return paise;
-// };
-
-// const getCustomer = async (tenantId, customerId, session) => {
-//   const customer = await Customer.findOne({
-//     _id: customerId,
-//     tenantId,
-//     isDeleted: false,
-//     status: "Active",
-//   })
-//     .session(session)
-//     .lean();
-
-//   if (!customer) {
-//     throw createError("Active customer not found", 404);
-//   }
-
-//   return customer;
-// };
-
-// const getAcceptedQuotation = async ({
-//   tenantId,
-//   quotationId,
-//   customerId,
-//   session,
-// }) => {
-//   const quotation = await SalesQuotation.findOne({
-//     _id: quotationId,
-//     tenantId,
-//     isDeleted: false,
-//     status: "ACCEPTED",
-//   })
-//     .session(session)
-//     .lean();
-
-//   if (!quotation) {
-//     throw createError("Accepted sales quotation not found", 404);
-//   }
-
-//   if (String(quotation.customerId) !== String(customerId)) {
-//     throw createError(
-//       "Sales order customer must match the source quotation customer",
-//       409,
-//     );
-//   }
-
-//   return quotation;
-// };
-
-// const calculateOrder = async ({ tenantId, payload, session }) => {
-//   const customerId = validateObjectId(payload.customerId, "customerId");
-
-//   const customer = await getCustomer(tenantId, customerId, session);
-
-//   const orderDate = new Date(payload.orderDate);
-
-//   if (!payload.orderDate || Number.isNaN(orderDate.getTime())) {
-//     throw createError("A valid order date is required");
-//   }
-
-//   const expectedDeliveryDate = payload.expectedDeliveryDate
-//     ? new Date(payload.expectedDeliveryDate)
-//     : null;
-
-//   if (
-//     payload.expectedDeliveryDate &&
-//     Number.isNaN(expectedDeliveryDate.getTime())
-//   ) {
-//     throw createError("Expected delivery date is invalid");
-//   }
-
-//   if (expectedDeliveryDate && expectedDeliveryDate < orderDate) {
-//     throw createError("Expected delivery date cannot be before order date");
-//   }
-
-//   if (
-//     !Array.isArray(payload.items) ||
-//     payload.items.length < 1 ||
-//     payload.items.length > 200
-//   ) {
-//     throw createError("A sales order requires between 1 and 200 items");
-//   }
-
-//   if (!TAX_MODES.includes(payload.taxMode)) {
-//     throw createError("Invalid tax mode");
-//   }
-
-//   let sourceQuotation = null;
-
-//   if (payload.sourceQuotationId) {
-//     sourceQuotation = await getAcceptedQuotation({
-//       tenantId,
-//       quotationId: payload.sourceQuotationId,
-//       customerId,
-//       session,
-//     });
-//   }
-
-//   const quotationLineMap = new Map();
-
-//   if (sourceQuotation) {
-//     for (const line of sourceQuotation.items) {
-//       quotationLineMap.set(String(line.lineId), line);
-//     }
-//   }
-
-//   const productIds = [
-//     ...new Set(
-//       payload.items.map((item) =>
-//         validateObjectId(item.productId, "productId").toString(),
-//       ),
-//     ),
-//   ];
-
-//   const products = await Product.find({
-//     _id: {
-//       $in: productIds,
-//     },
-//     tenantId,
-//     status: "ACTIVE",
-//     isDeleted: false,
-//   })
-//     .session(session)
-//     .lean();
-
-//   if (products.length !== productIds.length) {
-//     throw createError(
-//       "One or more products are missing, inactive, or belong to another tenant",
-//       404,
-//     );
-//   }
-
-//   const productMap = new Map(
-//     products.map((product) => [String(product._id), product]),
-//   );
-
-//   const seenLineIds = new Set();
-
-//   const totals = Object.fromEntries(AMOUNT_FIELDS.map((field) => [field, 0]));
-
-//   const items = [];
-
-//   for (const [index, input] of payload.items.entries()) {
-//     const productId = validateObjectId(
-//       input.productId,
-//       `Item ${index + 1} productId`,
-//     );
-
-//     const product = productMap.get(String(productId));
-
-//     if (!product) {
-//       throw createError(`Product for item ${index + 1} is unavailable`, 404);
-//     }
-
-//     const lineId = input.lineId
-//       ? validateObjectId(input.lineId, `Item ${index + 1} lineId`)
-//       : new mongoose.Types.ObjectId();
-
-//     const lineIdString = String(lineId);
-
-//     if (seenLineIds.has(lineIdString)) {
-//       throw createError(`Item ${index + 1} lineId must be unique`);
-//     }
-
-//     seenLineIds.add(lineIdString);
-
-//     let quotationLineId = null;
-
-//     if (input.quotationLineId) {
-//       quotationLineId = validateObjectId(
-//         input.quotationLineId,
-//         `Item ${index + 1} quotationLineId`,
-//       );
-
-//       if (!quotationLineMap.has(String(quotationLineId))) {
-//         throw createError(
-//           `Item ${index + 1} quotationLineId does not belong to the source quotation`,
-//           409,
-//         );
-//       }
-//     }
-
-//     const quantity = Number(input.quantity);
-
-//     if (!Number.isFinite(quantity) || quantity <= 0 || quantity > 1000000) {
-//       throw createError(`Item ${index + 1} quantity is invalid`);
-//     }
-
-//     const quantityMilli = Math.round(quantity * 1000);
-
-//     if (!Number.isSafeInteger(quantityMilli) || quantityMilli <= 0) {
-//       throw createError(
-//         `Item ${index + 1} quantity must have at most three decimal places`,
-//       );
-//     }
-
-//     const unitRatePaise =
-//       input.unitRatePaise !== undefined
-//         ? assertSafeAmount(
-//             Number(input.unitRatePaise),
-//             `Item ${index + 1} unit rate`,
-//           )
-//         : rupeesToPaise(input.unitRate, `Item ${index + 1} unit rate`);
-
-//     const discountPercent = Number(input.discountPercent ?? 0);
-
-//     if (
-//       !Number.isFinite(discountPercent) ||
-//       discountPercent < 0 ||
-//       discountPercent > 100
-//     ) {
-//       throw createError(`Item ${index + 1} discount is invalid`);
-//     }
-
-//     const discountBasisPoints = Math.round(discountPercent * 100);
-
-//     const gstRate = input.gstRate ?? product.gstRate;
-
-//     if (!GST_RATES.includes(gstRate)) {
-//       throw createError(`Item ${index + 1} GST rate is invalid`);
-//     }
-
-//     if (payload.taxMode === "NONE" && gstRate !== 0) {
-//       throw createError(
-//         `Item ${index + 1} GST rate must be zero when tax mode is NONE`,
-//       );
-//     }
-
-//     const grossAmountPaise = multiplyDivide(unitRatePaise, quantityMilli, 1000);
-
-//     const discountAmountPaise = multiplyDivide(
-//       grossAmountPaise,
-//       discountBasisPoints,
-//       10000,
-//     );
-
-//     const taxableAmountPaise = grossAmountPaise - discountAmountPaise;
-
-//     const taxAmountPaise = multiplyDivide(taxableAmountPaise, gstRate, 100);
-
-//     let cgstAmountPaise = 0;
-//     let sgstAmountPaise = 0;
-//     let igstAmountPaise = 0;
-
-//     if (payload.taxMode === "INTRA_STATE") {
-//       cgstAmountPaise = Math.floor(taxAmountPaise / 2);
-
-//       sgstAmountPaise = taxAmountPaise - cgstAmountPaise;
-//     } else if (payload.taxMode === "INTER_STATE") {
-//       igstAmountPaise = taxAmountPaise;
-//     }
-
-//     const totalAmountPaise = addAmounts(taxableAmountPaise, taxAmountPaise);
-
-//     const item = {
-//       lineId,
-//       quotationLineId,
-
-//       productId,
-//       productCode: product.productCode,
-//       productName: product.name,
-//       productType: product.type,
-//       unit: product.unit,
-//       hsnSacCode: product.hsnSacCode || null,
-//       specification: normalizeText(input.specification),
-
-//       quantity: quantityMilli / 1000,
-//       unitRatePaise,
-//       discountPercent: discountBasisPoints / 100,
-//       gstRate,
-
-//       grossAmountPaise,
-//       discountAmountPaise,
-//       taxableAmountPaise,
-//       cgstAmountPaise,
-//       sgstAmountPaise,
-//       igstAmountPaise,
-//       totalAmountPaise,
-//     };
-
-//     items.push(item);
-
-//     for (const field of AMOUNT_FIELDS) {
-//       totals[field] = addAmounts(totals[field], item[field]);
-//     }
-//   }
-
-//   return {
-//     customerId,
-//     customerCode: customer.customerCode,
-//     customerName: customer.customerName,
-//     customerGstNo: customer.gstNo || null,
-
-//     sourceQuotationId: sourceQuotation?._id || null,
-//     sourceQuotationNumber: sourceQuotation?.quotationNumber || null,
-//     sourceQuotationRevision: sourceQuotation?.revision || null,
-
-//     orderDate,
-//     expectedDeliveryDate,
-
-//     billingAddress:
-//       normalizeText(payload.billingAddress) || customer.billingAddress || null,
-
-//     shippingAddress:
-//       normalizeText(payload.shippingAddress) ||
-//       customer.shippingAddress ||
-//       null,
-
-//     taxMode: payload.taxMode,
-
-//     paymentTerms:
-//       normalizeText(payload.paymentTerms) ||
-//       customer.paymentTerms ||
-//       "Due on Receipt",
-
-//     deliveryTerms: normalizeText(payload.deliveryTerms),
-
-//     items,
-
-//     ...totals,
-
-//     notes: normalizeText(payload.notes),
-
-//     termsAndConditions: normalizeText(payload.termsAndConditions),
-//   };
-// };
-
-// const createAudit = async ({
-//   tenantId,
-//   userId,
-//   action,
-//   order,
-//   oldData = null,
-//   ipAddress,
-//   session,
-// }) => {
-//   await AuditLog.create(
-//     [
-//       {
-//         tenantId,
-//         userId,
-//         action,
-//         module: "SALESORDER",
-//         documentId: order._id,
-//         oldData,
-//         newData: order.toObject(),
-//         ipAddress,
-//       },
-//     ],
-//     {
-//       session,
-//     },
-//   );
-// };
-
-// const createSalesOrder = async ({ tenantId, userId, payload, ipAddress }) => {
-//   const session = await mongoose.startSession();
-
-//   try {
-//     let result;
-
-//     await session.withTransaction(async () => {
-//       const orderData = await calculateOrder({
-//         tenantId,
-//         payload,
-//         session,
-//       });
-
-//       const orderNumber = await getNextSequence("SO", String(tenantId));
-
-//       const records = await SalesOrder.create(
-//         [
-//           {
-//             ...orderData,
-//             tenantId,
-//             orderNumber,
-//             status: "DRAFT",
-//             createdBy: userId,
-//             updatedBy: userId,
-//           },
-//         ],
-//         {
-//           session,
-//         },
-//       );
-
-//       const order = records[0];
-
-//       await createAudit({
-//         tenantId,
-//         userId,
-//         action: "CREATE",
-//         order,
-//         ipAddress,
-//         session,
-//       });
-
-//       if (payload.action === "CONFIRM") {
-//         await confirmOrderInTransaction({
-//           tenantId,
-//           userId,
-//           order,
-//           ipAddress,
-//           session,
-//         });
-//       }
-
-//       result = order.toObject();
-//     });
-
-//     return result;
-//   } finally {
-//     await session.endSession();
-//   }
-// };
-
-// const getOrderByNumber = async ({ tenantId, orderNumber, session = null }) => {
-//   const order = await SalesOrder.findOne({
-//     tenantId,
-//     orderNumber: normalizeCode(orderNumber),
-//     isDeleted: false,
-//   })
-//     .session(session)
-//     .lean();
-
-//   if (!order) {
-//     throw createError("Sales order not found", 404);
-//   }
-
-//   return order;
-// };
-
-// const getSalesOrders = async ({
-//   tenantId,
-//   search,
-//   status,
-//   customerId,
-//   sourceQuotationId,
-//   orderDateFrom,
-//   orderDateTo,
-//   expectedDeliveryFrom,
-//   expectedDeliveryTo,
-//   page = 1,
-//   limit = 20,
-// }) => {
-//   const filter = {
-//     tenantId,
-//     isDeleted: false,
-//   };
-
-//   if (status) {
-//     filter.status = status;
-//   }
-
-//   if (customerId) {
-//     filter.customerId = validateObjectId(customerId, "customerId");
-//   }
-
-//   if (sourceQuotationId) {
-//     filter.sourceQuotationId = validateObjectId(
-//       sourceQuotationId,
-//       "sourceQuotationId",
-//     );
-//   }
-
-//   if (search) {
-//     const escaped = search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
-//     const regex = new RegExp(escaped, "i");
-
-//     filter.$or = [
-//       {
-//         orderNumber: regex,
-//       },
-//       {
-//         customerName: regex,
-//       },
-//       {
-//         customerCode: regex,
-//       },
-//     ];
-//   }
-
-//   if (orderDateFrom || orderDateTo) {
-//     filter.orderDate = {};
-
-//     if (orderDateFrom) {
-//       filter.orderDate.$gte = new Date(orderDateFrom);
-//     }
-
-//     if (orderDateTo) {
-//       filter.orderDate.$lte = new Date(`${orderDateTo}T23:59:59.999Z`);
-//     }
-//   }
-
-//   if (expectedDeliveryFrom || expectedDeliveryTo) {
-//     filter.expectedDeliveryDate = {};
-
-//     if (expectedDeliveryFrom) {
-//       filter.expectedDeliveryDate.$gte = new Date(expectedDeliveryFrom);
-//     }
-
-//     if (expectedDeliveryTo) {
-//       filter.expectedDeliveryDate.$lte = new Date(
-//         `${expectedDeliveryTo}T23:59:59.999Z`,
-//       );
-//     }
-//   }
-
-//   const currentPage = Math.max(Number(page) || 1, 1);
-
-//   const pageLimit = Math.min(Math.max(Number(limit) || 20, 1), 100);
-
-//   const [orders, total] = await Promise.all([
-//     SalesOrder.find(filter)
-//       .sort({
-//         orderDate: -1,
-//         createdAt: -1,
-//       })
-//       .skip((currentPage - 1) * pageLimit)
-//       .limit(pageLimit)
-//       .lean(),
-
-//     SalesOrder.countDocuments(filter),
-//   ]);
-
-//   return {
-//     data: orders,
-
-//     pagination: {
-//       page: currentPage,
-//       limit: pageLimit,
-//       total,
-//       totalPages: Math.ceil(total / pageLimit),
-//     },
-//   };
-// };
-
-// const updateSalesOrder = async ({
-//   tenantId,
-//   userId,
-//   orderNumber,
-//   payload,
-//   ipAddress,
-// }) => {
-//   const session = await mongoose.startSession();
-
-//   try {
-//     let result;
-
-//     await session.withTransaction(async () => {
-//       const existing = await SalesOrder.findOne({
-//         tenantId,
-//         orderNumber: normalizeCode(orderNumber),
-//         isDeleted: false,
-//       }).session(session);
-
-//       if (!existing) {
-//         throw createError("Sales order not found", 404);
-//       }
-
-//       if (existing.status !== "DRAFT") {
-//         throw createError("Only draft sales orders can be edited", 409);
-//       }
-
-//       const oldData = existing.toObject();
-
-//       const mergedPayload = {
-//         customerId: existing.customerId,
-
-//         sourceQuotationId: existing.sourceQuotationId,
-
-//         orderDate: payload.orderDate ?? existing.orderDate,
-
-//         expectedDeliveryDate:
-//           payload.expectedDeliveryDate ?? existing.expectedDeliveryDate,
-
-//         billingAddress: payload.billingAddress ?? existing.billingAddress,
-
-//         shippingAddress: payload.shippingAddress ?? existing.shippingAddress,
-
-//         taxMode: payload.taxMode ?? existing.taxMode,
-
-//         paymentTerms: payload.paymentTerms ?? existing.paymentTerms,
-
-//         deliveryTerms: payload.deliveryTerms ?? existing.deliveryTerms,
-
-//         items:
-//           payload.items ??
-//           existing.items.map((item) => ({
-//             lineId: item.lineId,
-//             quotationLineId: item.quotationLineId,
-//             productId: item.productId,
-//             specification: item.specification,
-//             quantity: item.quantity,
-//             unitRatePaise: item.unitRatePaise,
-//             discountPercent: item.discountPercent,
-//             gstRate: item.gstRate,
-//           })),
-
-//         notes: payload.notes ?? existing.notes,
-
-//         termsAndConditions:
-//           payload.termsAndConditions ?? existing.termsAndConditions,
-//       };
-
-//       const orderData = await calculateOrder({
-//         tenantId,
-//         payload: mergedPayload,
-//         session,
-//       });
-
-//       existing.set({
-//         ...orderData,
-//         updatedBy: userId,
-//       });
-
-//       await existing.save({
-//         session,
-//       });
-
-//       await createAudit({
-//         tenantId,
-//         userId,
-//         action: "UPDATE",
-//         order: existing,
-//         oldData,
-//         ipAddress,
-//         session,
-//       });
-
-//       result = existing.toObject();
-//     });
-
-//     return result;
-//   } finally {
-//     await session.endSession();
-//   }
-// };
-
-// const confirmOrderInTransaction = async ({
-//   tenantId,
-//   userId,
-//   order,
-//   ipAddress,
-//   session,
-// }) => {
-//   if (order.status !== "DRAFT") {
-//     throw createError("Only draft sales orders can be confirmed", 409);
-//   }
-
-//   if (order.totalAmountPaise <= 0) {
-//     throw createError(
-//       "A sales order must have a positive total to be confirmed",
-//       409,
-//     );
-//   }
-
-//   const oldData = order.toObject();
-
-//   order.status = "CONFIRMED";
-//   order.confirmedAt = new Date();
-//   order.confirmedBy = userId;
-//   order.updatedBy = userId;
-
-//   await order.save({
-//     session,
-//   });
-
-//   await createAudit({
-//     tenantId,
-//     userId,
-//     action: "CONFIRM",
-//     order,
-//     oldData,
-//     ipAddress,
-//     session,
-//   });
-
-//   return order;
-// };
-
-// const confirmSalesOrder = async ({
-//   tenantId,
-//   userId,
-//   orderNumber,
-//   ipAddress,
-// }) => {
-//   const session = await mongoose.startSession();
-
-//   try {
-//     let result;
-
-//     await session.withTransaction(async () => {
-//       const order = await SalesOrder.findOne({
-//         tenantId,
-//         orderNumber: normalizeCode(orderNumber),
-//         isDeleted: false,
-//       }).session(session);
-
-//       if (!order) {
-//         throw createError("Sales order not found", 404);
-//       }
-
-//       result = await confirmOrderInTransaction({
-//         tenantId,
-//         userId,
-//         order,
-//         ipAddress,
-//         session,
-//       });
-
-//       result = result.toObject();
-//     });
-
-//     return result;
-//   } finally {
-//     await session.endSession();
-//   }
-// };
-
-// const startSalesOrder = async ({
-//   tenantId,
-//   userId,
-//   orderNumber,
-//   ipAddress,
-// }) => {
-//   const session = await mongoose.startSession();
-
-//   try {
-//     let result;
-
-//     await session.withTransaction(async () => {
-//       const order = await SalesOrder.findOne({
-//         tenantId,
-//         orderNumber: normalizeCode(orderNumber),
-//         isDeleted: false,
-//       }).session(session);
-
-//       if (!order) {
-//         throw createError("Sales order not found", 404);
-//       }
-
-//       if (order.status !== "CONFIRMED") {
-//         throw createError("Only confirmed sales orders can be started", 409);
-//       }
-
-//       const oldData = order.toObject();
-
-//       order.status = "IN_PROGRESS";
-//       order.startedAt = new Date();
-//       order.startedBy = userId;
-//       order.updatedBy = userId;
-
-//       await order.save({
-//         session,
-//       });
-
-//       await createAudit({
-//         tenantId,
-//         userId,
-//         action: "START",
-//         order,
-//         oldData,
-//         ipAddress,
-//         session,
-//       });
-
-//       result = order.toObject();
-//     });
-
-//     return result;
-//   } finally {
-//     await session.endSession();
-//   }
-// };
-
-// const completeSalesOrder = async ({
-//   tenantId,
-//   userId,
-//   orderNumber,
-//   ipAddress,
-// }) => {
-//   const session = await mongoose.startSession();
-
-//   try {
-//     let result;
-
-//     await session.withTransaction(async () => {
-//       const order = await SalesOrder.findOne({
-//         tenantId,
-//         orderNumber: normalizeCode(orderNumber),
-//         isDeleted: false,
-//       }).session(session);
-
-//       if (!order) {
-//         throw createError("Sales order not found", 404);
-//       }
-
-//       if (order.status !== "IN_PROGRESS") {
-//         throw createError(
-//           "Only in-progress sales orders can be completed",
-//           409,
-//         );
-//       }
-
-//       const oldData = order.toObject();
-
-//       order.status = "COMPLETED";
-//       order.completedAt = new Date();
-//       order.completedBy = userId;
-//       order.updatedBy = userId;
-
-//       await order.save({
-//         session,
-//       });
-
-//       await createAudit({
-//         tenantId,
-//         userId,
-//         action: "COMPLETE",
-//         order,
-//         oldData,
-//         ipAddress,
-//         session,
-//       });
-
-//       result = order.toObject();
-//     });
-
-//     return result;
-//   } finally {
-//     await session.endSession();
-//   }
-// };
-
-// const cancelSalesOrder = async ({
-//   tenantId,
-//   userId,
-//   orderNumber,
-//   cancellationReason,
-//   ipAddress,
-// }) => {
-//   const session = await mongoose.startSession();
-
-//   try {
-//     let result;
-
-//     await session.withTransaction(async () => {
-//       const order = await SalesOrder.findOne({
-//         tenantId,
-//         orderNumber: normalizeCode(orderNumber),
-//         isDeleted: false,
-//       }).session(session);
-
-//       if (!order) {
-//         throw createError("Sales order not found", 404);
-//       }
-
-//       if (order.status === "COMPLETED" || order.status === "CANCELLED") {
-//         throw createError(
-//           "Completed or cancelled sales orders cannot be cancelled",
-//           409,
-//         );
-//       }
-
-//       const oldData = order.toObject();
-
-//       order.status = "CANCELLED";
-//       order.cancelledAt = new Date();
-//       order.cancelledBy = userId;
-//       order.cancellationReason = normalizeText(cancellationReason);
-//       order.updatedBy = userId;
-
-//       await order.save({
-//         session,
-//       });
-
-//       await createAudit({
-//         tenantId,
-//         userId,
-//         action: "CANCEL",
-//         order,
-//         oldData,
-//         ipAddress,
-//         session,
-//       });
-
-//       result = order.toObject();
-//     });
-
-//     return result;
-//   } finally {
-//     await session.endSession();
-//   }
-// };
-
-// const deleteSalesOrder = async ({
-//   tenantId,
-//   userId,
-//   orderNumber,
-//   ipAddress,
-// }) => {
-//   const session = await mongoose.startSession();
-
-//   try {
-//     let result;
-
-//     await session.withTransaction(async () => {
-//       const order = await SalesOrder.findOne({
-//         tenantId,
-//         orderNumber: normalizeCode(orderNumber),
-//         isDeleted: false,
-//       }).session(session);
-
-//       if (!order) {
-//         throw createError("Sales order not found", 404);
-//       }
-
-//       if (order.status !== "DRAFT") {
-//         throw createError("Only draft sales orders can be deleted", 409);
-//       }
-
-//       const oldData = order.toObject();
-
-//       order.isDeleted = true;
-//       order.deletedAt = new Date();
-//       order.deletedBy = userId;
-//       order.updatedBy = userId;
-
-//       await order.save({
-//         session,
-//       });
-
-//       await createAudit({
-//         tenantId,
-//         userId,
-//         action: "DELETE",
-//         order,
-//         oldData,
-//         ipAddress,
-//         session,
-//       });
-
-//       result = true;
-//     });
-
-//     return result;
-//   } finally {
-//     await session.endSession();
-//   }
-// };
-// const convertQuotationToSalesOrder = async ({
-//   tenantId,
-//   userId,
-//   quotationId,
-//   payload = {},
-//   ipAddress,
-// }) => {
-//   const session = await mongoose.startSession();
-
-//   try {
-//     let result;
-
-//     await session.withTransaction(async () => {
-//       const quotation = await SalesQuotation.findOne({
-//         _id: validateObjectId(quotationId, "quotationId"),
-//         tenantId,
-//         isDeleted: false,
-//         status: "ACCEPTED",
-//       })
-//         .session(session)
-//         .lean();
-
-//       if (!quotation) {
-//         throw createError("Accepted sales quotation not found", 404);
-//       }
-
-//       const existingOrder = await SalesOrder.findOne({
-//         tenantId,
-//         sourceQuotationId: quotation._id,
-//         isDeleted: false,
-//         status: {
-//           $nin: ["CANCELLED"],
-//         },
-//       })
-//         .session(session)
-//         .select("_id orderNumber status")
-//         .lean();
-
-//       if (existingOrder) {
-//         throw createError(
-//           `Quotation ${quotation.quotationNumber} has already been converted to sales order ${existingOrder.orderNumber}`,
-//           409,
-//         );
-//       }
-
-//       const orderPayload = {
-//         sourceQuotationId: String(quotation._id),
-
-//         customerId: String(quotation.customerId),
-
-//         orderDate: payload.orderDate || new Date().toISOString(),
-
-//         expectedDeliveryDate: payload.expectedDeliveryDate || null,
-
-//         billingAddress: payload.billingAddress || quotation.billingAddress,
-
-//         shippingAddress: payload.shippingAddress || quotation.shippingAddress,
-
-//         taxMode: payload.taxMode || quotation.taxMode,
-
-//         paymentTerms: payload.paymentTerms || quotation.paymentTerms,
-
-//         deliveryTerms: payload.deliveryTerms || null,
-
-//         items:
-//           payload.items ||
-//           quotation.items.map((item) => ({
-//             quotationLineId: String(item.lineId),
-
-//             productId: String(item.productId),
-
-//             quantity: item.quantity,
-
-//             unitRatePaise: item.unitRatePaise,
-
-//             discountPercent: item.discountPercent,
-
-//             gstRate: item.gstRate,
-//           })),
-
-//         notes: payload.notes || quotation.notes,
-
-//         termsAndConditions:
-//           payload.termsAndConditions || quotation.termsAndConditions,
-
-//         action: payload.action || "SAVE",
-//       };
-
-//       const orderData = await calculateOrder({
-//         tenantId,
-//         payload: orderPayload,
-//         session,
-//       });
-
-//       const orderNumber = await getNextSequence("SO", String(tenantId));
-
-//       const records = await SalesOrder.create(
-//         [
-//           {
-//             ...orderData,
-//             tenantId,
-//             orderNumber,
-//             status: "DRAFT",
-//             createdBy: userId,
-//             updatedBy: userId,
-//           },
-//         ],
-//         {
-//           session,
-//         },
-//       );
-
-//       const order = records[0];
-
-//       await createAudit({
-//         tenantId,
-//         userId,
-//         action: "CREATE",
-//         order,
-//         ipAddress,
-//         session,
-//       });
-
-//       if (orderPayload.action === "CONFIRM") {
-//         await confirmOrderInTransaction({
-//           tenantId,
-//           userId,
-//           order,
-//           ipAddress,
-//           session,
-//         });
-//       }
-
-//       result = order.toObject();
-//     });
-
-//     return result;
-//   } finally {
-//     await session.endSession();
-//   }
-// };
-
-// module.exports = {
-//   createSalesOrder,
-//   getSalesOrders,
-//   getOrderByNumber,
-//   updateSalesOrder,
-//   confirmSalesOrder,
-//   startSalesOrder,
-//   completeSalesOrder,
-//   cancelSalesOrder,
-//   deleteSalesOrder,
-//   convertQuotationToSalesOrder,
-// };
-
 const mongoose = require("mongoose");
 
 const {
@@ -1560,29 +354,19 @@ const ensureNoExistingConversion = async ({
   excludeOrderId,
   session,
 }) => {
-  const quotation =
-    await models.SalesQuotation.findOne({
-      _id: validateObjectId(
-        quotationId,
-        "quotationId",
-      ),
-      tenantId,
-    })
-      .session(session)
-      .select(
-        "_id comparisonGroupId quotationFamilyId",
-      )
-      .lean();
+  const quotation = await models.SalesQuotation.findOne({
+    _id: validateObjectId(quotationId, "quotationId"),
+    tenantId,
+  })
+    .session(session)
+    .select("_id comparisonGroupId quotationFamilyId")
+    .lean();
 
   if (!quotation) {
-    throw createError(
-      "Source quotation not found",
-      404,
-    );
+    throw createError("Source quotation not found", 404);
   }
 
-  const groupId =
-    quotation.comparisonGroupId;
+  const groupId = quotation.comparisonGroupId;
 
   /*
    * Old records without a comparison group are
@@ -1590,10 +374,7 @@ const ensureNoExistingConversion = async ({
    */
   const scopeKey = groupId
     ? `group_${String(groupId)}`
-    : `family_${String(
-        quotation.quotationFamilyId ||
-          quotation._id,
-      )}`;
+    : `family_${String(quotation.quotationFamilyId || quotation._id)}`;
 
   /*
    * A shared transaction write serializes order
@@ -1601,16 +382,11 @@ const ensureNoExistingConversion = async ({
    *
    * Use the tenant connection, not mongoose.connection.
    */
-  const counters =
-    models.SalesOrder.db.db.collection(
-      "counters",
-    );
+  const counters = models.SalesOrder.db.db.collection("counters");
 
   await counters.updateOne(
     {
-      _id:
-        `${String(tenantId)}_` +
-        `QUOTATION_ORDER_LOCK_${scopeKey}`,
+      _id: `${String(tenantId)}_` + `QUOTATION_ORDER_LOCK_${scopeKey}`,
     },
     {
       $inc: { seq: 1 },
@@ -1626,13 +402,9 @@ const ensureNoExistingConversion = async ({
   };
 
   if (groupId) {
-    sourceFilter.comparisonGroupId =
-      groupId;
-  } else if (
-    quotation.quotationFamilyId
-  ) {
-    sourceFilter.quotationFamilyId =
-      quotation.quotationFamilyId;
+    sourceFilter.comparisonGroupId = groupId;
+  } else if (quotation.quotationFamilyId) {
+    sourceFilter.quotationFamilyId = quotation.quotationFamilyId;
   } else {
     sourceFilter._id = quotation._id;
   }
@@ -1642,21 +414,16 @@ const ensureNoExistingConversion = async ({
    * Their active orders must still block another
    * order for this comparison.
    */
-  const groupQuotations =
-    await models.SalesQuotation.find(
-      sourceFilter,
-    )
-      .session(session)
-      .select("_id")
-      .lean();
+  const groupQuotations = await models.SalesQuotation.find(sourceFilter)
+    .session(session)
+    .select("_id")
+    .lean();
 
   const orderFilter = {
     tenantId,
 
     sourceQuotationId: {
-      $in: groupQuotations.map(
-        (record) => record._id,
-      ),
+      $in: groupQuotations.map((record) => record._id),
     },
 
     isDeleted: false,
@@ -1669,15 +436,10 @@ const ensureNoExistingConversion = async ({
     };
   }
 
-  const existingOrder =
-    await models.SalesOrder.findOne(
-      orderFilter,
-    )
-      .session(session)
-      .select(
-        "_id orderNumber status sourceQuotationId",
-      )
-      .lean();
+  const existingOrder = await models.SalesOrder.findOne(orderFilter)
+    .session(session)
+    .select("_id orderNumber status sourceQuotationId")
+    .lean();
 
   if (existingOrder) {
     throw createError(
@@ -2256,8 +1018,101 @@ const addDateRange = (filter, field, fromValue, toValue) => {
   }
 };
 
+// const getSalesOrders = async (args) => {
+//   const { models, tenantId } = resolveContext(args);
+
+//   const {
+//     search,
+//     status,
+//     customerId,
+//     sourceQuotationId,
+//     orderDateFrom,
+//     orderDateTo,
+//     expectedDeliveryFrom,
+//     expectedDeliveryTo,
+//   } = args;
+
+//   const page = Math.max(Math.floor(Number(args.page) || 1), 1);
+
+//   const limit = Math.min(
+//     Math.max(Math.floor(Number(args.limit) || 20), 1),
+//     100,
+//   );
+
+//   const filter = {
+//     tenantId,
+//     isDeleted: false,
+//   };
+
+//   if (status) {
+//     if (!ORDER_STATUSES.includes(status)) {
+//       throw createError("Invalid Sales Order status");
+//     }
+
+//     filter.status = status;
+//   }
+
+//   if (customerId) {
+//     filter.customerId = validateObjectId(customerId, "customerId");
+//   }
+
+//   if (sourceQuotationId) {
+//     filter.sourceQuotationId = validateObjectId(
+//       sourceQuotationId,
+//       "sourceQuotationId",
+//     );
+//   }
+
+//   const searchText = normalizeText(search);
+
+//   if (searchText) {
+//     const regex = new RegExp(escapeRegex(searchText), "i");
+
+//     filter.$or = [
+//       { orderNumber: regex },
+//       { customerName: regex },
+//       { customerCode: regex },
+//     ];
+//   }
+
+//   addDateRange(filter, "orderDate", orderDateFrom, orderDateTo);
+
+//   addDateRange(
+//     filter,
+//     "expectedDeliveryDate",
+//     expectedDeliveryFrom,
+//     expectedDeliveryTo,
+//   );
+
+//   const [data, total] = await Promise.all([
+//     models.SalesOrder.find(filter)
+//       .sort({
+//         orderDate: -1,
+//         createdAt: -1,
+//         _id: -1,
+//       })
+//       .skip((page - 1) * limit)
+//       .limit(limit)
+//       .lean(),
+
+//     models.SalesOrder.countDocuments(filter),
+//   ]);
+
+//   return {
+//     data,
+//     pagination: {
+//       page,
+//       limit,
+//       total,
+//       totalPages: Math.ceil(total / limit),
+//     },
+//   };
+// };
 const getSalesOrders = async (args) => {
-  const { models, tenantId } = resolveContext(args);
+  const {
+    models,
+    tenantId,
+  } = resolveContext(args);
 
   const {
     search,
@@ -2268,27 +1123,16 @@ const getSalesOrders = async (args) => {
     orderDateTo,
     expectedDeliveryFrom,
     expectedDeliveryTo,
+    page = 1,
+    limit = 20,
   } = args;
-
-  const page = Math.max(Math.floor(Number(args.page) || 1), 1);
-
-  const limit = Math.min(
-    Math.max(Math.floor(Number(args.limit) || 20), 1),
-    100,
-  );
 
   const filter = {
     tenantId,
     isDeleted: false,
   };
 
-  if (status) {
-    if (!ORDER_STATUSES.includes(status)) {
-      throw createError("Invalid Sales Order status");
-    }
-
-    filter.status = status;
-  }
+  if (status) filter.status = status;
 
   if (customerId) {
     filter.customerId = validateObjectId(customerId, "customerId");
@@ -2301,10 +1145,8 @@ const getSalesOrders = async (args) => {
     );
   }
 
-  const searchText = normalizeText(search);
-
-  if (searchText) {
-    const regex = new RegExp(escapeRegex(searchText), "i");
+  if (search) {
+    const regex = new RegExp(escapeRegex(search), "i");
 
     filter.$or = [
       { orderNumber: regex },
@@ -2313,36 +1155,75 @@ const getSalesOrders = async (args) => {
     ];
   }
 
-  addDateRange(filter, "orderDate", orderDateFrom, orderDateTo);
+  if (orderDateFrom || orderDateTo) {
+    filter.orderDate = {};
 
-  addDateRange(
-    filter,
-    "expectedDeliveryDate",
-    expectedDeliveryFrom,
-    expectedDeliveryTo,
-  );
+    if (orderDateFrom) {
+      filter.orderDate.$gte = new Date(orderDateFrom);
+    }
 
-  const [data, total] = await Promise.all([
+    if (orderDateTo) {
+      filter.orderDate.$lte = new Date(`${orderDateTo}T23:59:59.999Z`);
+    }
+  }
+
+  if (expectedDeliveryFrom || expectedDeliveryTo) {
+    filter.expectedDeliveryDate = {};
+
+    if (expectedDeliveryFrom) {
+      filter.expectedDeliveryDate.$gte = new Date(expectedDeliveryFrom);
+    }
+
+    if (expectedDeliveryTo) {
+      filter.expectedDeliveryDate.$lte = new Date(
+        `${expectedDeliveryTo}T23:59:59.999Z`,
+      );
+    }
+  }
+
+  const currentPage = Math.max(Number(page) || 1, 1);
+  const pageLimit = Math.min(Math.max(Number(limit) || 20, 1), 100);
+
+  const [orders, total] = await Promise.all([
     models.SalesOrder.find(filter)
-      .sort({
-        orderDate: -1,
-        createdAt: -1,
-        _id: -1,
-      })
-      .skip((page - 1) * limit)
-      .limit(limit)
+      .sort({ orderDate: -1, createdAt: -1 })
+      .skip((currentPage - 1) * pageLimit)
+      .limit(pageLimit)
       .lean(),
 
     models.SalesOrder.countDocuments(filter),
   ]);
 
+  const orderIds = orders.map((order) => order._id);
+
+  const invoices = await models.SalesInvoice.find({
+    tenantId,
+    sourceSalesOrderId: { $in: orderIds },
+    isDeleted: false,
+    status: { $ne: "CANCELLED" },
+  })
+    .select("sourceSalesOrderId invoiceNumber")
+    .lean();
+
+  const invoiceMap = new Map(
+    invoices.map((invoice) => [
+      String(invoice.sourceSalesOrderId),
+      invoice.invoiceNumber,
+    ]),
+  );
+
+  const ordersWithInvoiceNumber = orders.map((order) => ({
+    ...order,
+    invoiceNumber: invoiceMap.get(String(order._id)) || null,
+  }));
+
   return {
-    data,
+    data: ordersWithInvoiceNumber,
     pagination: {
-      page,
-      limit,
+      page: currentPage,
+      limit: pageLimit,
       total,
-      totalPages: Math.ceil(total / limit),
+      totalPages: Math.ceil(total / pageLimit),
     },
   };
 };

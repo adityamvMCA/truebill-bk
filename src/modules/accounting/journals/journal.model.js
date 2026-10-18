@@ -92,6 +92,7 @@ const journalSchema = new mongoose.Schema(
         "MANUAL_JOURNAL",
         "SALES_INVOICE",
         "CUSTOMER_RECEIPT",
+        "SALES_RETURN",
       ],
       required: true,
     },
