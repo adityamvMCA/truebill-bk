@@ -49,7 +49,7 @@ const FEATURE_TREE = {
   ],
 
   gst: ["gst.summary", "gst.gstrReports", "gst.taxConfiguration", "taxConfiguration.view",
-    "taxConfiguration.update",],
+    "taxConfiguration.update","gstrReports.view",],
 
   bank: [
     "bank.accounts",
@@ -57,6 +57,8 @@ const FEATURE_TREE = {
     "bank.payments",
     "bank.transfers",
     "bank.reconciliation",
+    "bankReconciliation.view",
+    "bankReconciliation.reconcile"
   ],
 
   expenses: [
@@ -165,6 +167,7 @@ const PLANS = {
       "crm",
       "gst.eInvoice",
       "gst.eWayBill",
+      "gstrReports.view",
       "settings.auditLogs",
       "sales",
     ],

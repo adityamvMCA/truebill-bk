@@ -31,6 +31,8 @@ const LegacySalesOrder = require("../modules/sales-orders/salesOrder.model");
 const LegacyDeliveryNote = require("../modules/delivery-notes/deliveryNote.model");
 const LegacySalesReturn = require("../modules/sales-returns/salesReturn.model");
 const taxConfigurationSchema = require("../modules/accounting/taxconfiguration/taxConfiguration.model");
+const BankClearingSchema = require("../modules/accounting/bankreconciliation/bankClearing.model");
+const BankReconciliationschema = require("../modules/accounting/bankreconciliation/bankReconciliation.model");
 const assertConnection = (connection) => {
   if (
     !connection ||
@@ -152,6 +154,8 @@ const getTenantAccountingModels = (connection) => {
     DeliveryNote: LegacyDeliveryNote,
     SalesReturn: LegacySalesReturn, // NEW
     TaxConfiguration: taxConfigurationSchema,
+    BankClearing: BankClearingSchema,
+    BankReconciliation: BankReconciliationschema,
   };
 
   const models = {};

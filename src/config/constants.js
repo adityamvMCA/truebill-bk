@@ -91,6 +91,10 @@ const ROLE_PERMISSIONS = {
     "salesReturn.post",
     "taxConfiguration.view",
     "taxConfiguration.update",
+    "gstSummary.view",
+    "gst.gstrReports",
+    "bankReconciliation.view",
+    "bankReconciliation.reconcile",
   ],
 
   accountant: [
@@ -126,7 +130,9 @@ const ROLE_PERMISSIONS = {
     "salesQuotation.issue",
     "salesQuotation.delete",
     "sales.quotations",
-    "",
+    "gstSummary.view",
+    "gst.gstrReports",
+    "accounting-bank-reconciliation",
   ],
 
   sales: [
