@@ -1,5 +1,3 @@
-// const Ledger = require("../ledgers/ledger.model");
-// const LedgerGroup = require("../ledger-groups/ledgerGroup.model");
 
 const {
   resolveAccountingSeedModels,

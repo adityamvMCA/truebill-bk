@@ -16,7 +16,7 @@ const {
   createStockMovement,
 } = require("../stock-movements/stockMovement.service");
 
-const OUTPUT_TAX_LEDGER_CODES = {
+const OUTPUT_TAX_LEDGER_FIELDS = {
   cgstAmountPaise: "OUTPUT_CGST",
   sgstAmountPaise: "OUTPUT_SGST",
   igstAmountPaise: "OUTPUT_IGST",
