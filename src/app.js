@@ -35,6 +35,7 @@ const gstSummaryRoutes = require("./modules/accounting/gstsummary/gstSummary.rou
 const gstrReportsRoutes = require("./modules/accounting/gstrReports/gstrReports.routes");
 const bankReconciliationRoutes = require("./modules/accounting/bankreconciliation/bankReconciliation.routes");
 const trialBalanceRoutes = require("./modules/accounting/journals/trialBalance/trialBalance.routes");
+const outcustsupRoutes = require("./modules/accounting/oustanding/outstanding.routes");
 const app = express();
 
 app.set("trust proxy", 1);
@@ -140,6 +141,7 @@ app.use("/api/gst-summary", gstSummaryRoutes);
 app.use("/api/gstr-reports", gstrReportsRoutes);
 app.use("/api/bank-reconciliation", bankReconciliationRoutes);
 app.use("/api/accounting/reports", trialBalanceRoutes);
+app.use("/api/accounting/outstanding", outcustsupRoutes);
 
 app.use((req, res) =>
   res.status(404).json({
