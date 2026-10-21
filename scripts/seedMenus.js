@@ -1,7 +1,6 @@
 require("dotenv").config();
 
 const mongoose = require("mongoose");
-const crypto = require("crypto");
 
 const Menu = require("../src/models/Menu");
 
@@ -12,25 +11,53 @@ const MONGODB_URI =
 
 const APP_CODE = "truebill";
 
+const ROLES = {
+  ADMIN: ["admin"],
+  MANAGEMENT: ["admin", "manager"],
+  SALES: ["admin", "manager", "sales"],
+  PURCHASE: ["admin", "manager", "purchase"],
+  INVENTORY: ["admin", "manager", "inventory"],
+  PURCHASE_PARENT: [
+    "admin",
+    "manager",
+    "purchase",
+    "inventory",
+  ],
+  PURCHASE_RECEIVING: [
+    "admin",
+    "manager",
+    "purchase",
+    "inventory",
+  ],
+  ALL: [
+    "admin",
+    "manager",
+    "sales",
+    "purchase",
+    "inventory",
+    "viewer",
+  ],
+};
+
 const normalize = (value) =>
-  String(value || "")
+  String(value ?? "")
     .trim()
     .toLowerCase();
 
-const generateDocumentNumber = () =>
-  `MNU-${APP_CODE.toUpperCase()}-${Date.now()}-${crypto
-    .randomBytes(3)
-    .toString("hex")}`;
-
-const buildChild = (child, index, parentRoles) => ({
-  id: child.id,
-  label: child.label,
-  icon: child.icon || null,
-  path: child.path || null,
-  feature: child.feature ? normalize(child.feature) : null,
-  roles: child.roles || parentRoles,
-  order: child.order ?? index + 1,
-  isActive: child.isActive !== false,
+const child = (
+  id,
+  label,
+  icon,
+  path,
+  feature,
+  roles,
+) => ({
+  id,
+  label,
+  icon,
+  path,
+  feature,
+  roles,
 });
 
 const menus = [
@@ -41,7 +68,7 @@ const menus = [
     icon: "LayoutDashboard",
     path: "/dashboard",
     feature: "dashboard",
-    roles: ["admin", "manager", "sales", "purchase", "inventory", "viewer"],
+    roles: ROLES.ALL,
     order: 1,
     children: [],
   },
@@ -53,64 +80,63 @@ const menus = [
     icon: "ShoppingCart",
     path: "/sales",
     feature: "sales",
-    roles: ["admin", "manager", "sales"],
+    roles: ROLES.SALES,
     order: 1,
+
     children: [
-      {
-        id: "sales-quotations",
-        label: "Quotations",
-        icon: "FileText",
-        path: "/sales/quotations",
-        feature: "sales.quotations",
-        roles: ["admin", "manager", "sales"],
-        order: 1,
-      },
-      {
-        id: "sales-orders",
-        label: "Sales Orders",
-        icon: "ClipboardList",
-        path: "/sales/orders",
-        feature: "sales.orders",
-        roles: ["admin", "manager", "sales"],
-        order: 2,
-      },
-      {
-        id: "sales-delivery",
-        label: "Delivery Notes",
-        icon: "Truck",
-        path: "/sales/delivery",
-        feature: "sales",
-        roles: ["admin", "manager", "sales"],
-        order: 3,
-      },
-      {
-        id: "sales-invoices",
-        label: "Sales Invoices",
-        icon: "ReceiptText",
-        path: "/sales/invoices",
-        feature: "sales.invoices",
-        roles: ["admin", "manager", "sales"],
-        order: 4,
-      },
-      {
-        id: "sales-returns",
-        label: "Sales Returns",
-        icon: "Undo2",
-        path: "/sales/returns",
-        feature: "sales",
-        roles: ["admin", "manager", "sales"],
-        order: 5,
-      },
-      {
-        id: "customer-receipts",
-        label: "Customer Receipts",
-        icon: "Receipt",
-        path: "/sales/customer-receipts",
-        feature: "sales",
-        roles: ["admin", "sales"],
-        order: 6,
-        isActive: true,
-      },
+      child(
+        "sales-quotations",
+        "Quotations",
+        "FileText",
+        "/sales/quotations",
+        "sales.quotations",
+        ROLES.SALES,
+      ),
+
+      child(
+        "sales-orders",
+        "Sales Orders",
+        "ClipboardList",
+        "/sales/orders",
+        "sales.orders",
+        ROLES.SALES,
+      ),
+
+      child(
+        "sales-delivery",
+        "Delivery Notes",
+        "Truck",
+        "/sales/delivery",
+        "sales",
+        ROLES.SALES,
+      ),
+
+      child(
+        "sales-invoices",
+        "Sales Invoices",
+        "ReceiptText",
+        "/sales/invoices",
+        "sales.invoices",
+        ROLES.SALES,
+      ),
+
+      child(
+        "sales-returns",
+        "Sales Returns",
+        "Undo2",
+        "/sales/returns",
+        "sales",
+        ROLES.SALES,
+      ),
+
+      child(
+        "customer-receipts",
+        "Customer Receipts",
+        "Receipt",
+        "/sales/customer-receipts",
+        "sales",
+        ["admin", "sales"],
+      ),
     ],
   },
 
@@ -121,81 +147,90 @@ const menus = [
     icon: "ShoppingBag",
     path: "/purchase",
     feature: "purchase",
-    roles: ["admin", "manager", "purchase"],
+    roles: ROLES.PURCHASE_PARENT,
     order: 1,
+
     children: [
-      {
-        id: "purchase-requisitions",
-        label: "Purchase Requisitions",
-        icon: "ClipboardPen",
-        path: "/purchase/requisitions",
-        feature: "purchase.requisitions",
-        roles: ["admin", "manager", "purchase"],
-        order: 1,
-      },
-      {
-        id: "purchase-rfq",
-        label: "RFQ",
-        icon: "FileSearch",
-        path: "/purchase/rfq",
-        feature: "purchase.rfq",
-        roles: ["admin", "manager", "purchase"],
-        order: 2,
-      },
-      {
-        id: "purchase-quotations",
-        label: "Supplier Quotations",
-        icon: "FileText",
-        path: "/purchase/quotations",
-        feature: "purchase.quotations",
-        roles: ["admin", "manager", "purchase"],
-        order: 3,
-      },
-      {
-        id: "purchase-quotation-comparison",
-        label: "Quotation Comparison",
-        icon: "Scale",
-        path: "/purchase/quotation-comparison",
-        feature: "purchase.quotations",
-        roles: ["admin", "manager", "purchase"],
-        order: 4,
-      },
-      {
-        id: "purchase-orders",
-        label: "Purchase Orders",
-        icon: "ClipboardList",
-        path: "/purchase/orders",
-        feature: "purchase.orders",
-        roles: ["admin", "manager", "purchase"],
-        order: 5,
-      },
-      {
-        id: "purchase-grn",
-        label: "Goods Receipt",
-        icon: "PackageCheck",
-        path: "/purchase/grn",
-        feature: "purchase",
-        roles: ["admin", "manager", "purchase", "inventory"],
-        order: 6,
-      },
-      {
-        id: "purchase-invoices",
-        label: "Purchase Bills",
-        icon: "ReceiptText",
-        path: "/purchase/invoices",
-        feature: "purchase",
-        roles: ["admin", "manager", "purchase"],
-        order: 7,
-      },
-      {
-        id: "purchase-returns",
-        label: "Purchase Returns",
-        icon: "Undo2",
-        path: "/purchase/returns",
-        feature: "purchase",
-        roles: ["admin", "manager", "purchase"],
-        order: 8,
-      },
+      child(
+        "purchase-requisitions",
+        "Purchase Requisitions",
+        "ClipboardPen",
+        "/purchase/requisitions",
+        "purchase.requisitions",
+        ROLES.PURCHASE,
+      ),
+
+      child(
+        "purchase-rfq",
+        "RFQ",
+        "FileSearch",
+        "/purchase/rfq",
+        "purchase.rfq",
+        ROLES.PURCHASE,
+      ),
+
+      child(
+        "purchase-quotations",
+        "Supplier Quotations",
+        "FileText",
+        "/purchase/supplier-quotations",
+        "purchase.quotations",
+        ROLES.PURCHASE,
+      ),
+
+      child(
+        "purchase-quotation-comparison",
+        "Quotation Comparison",
+        "Scale",
+        "/purchase/quotation-comparison",
+        "purchase.quotations",
+        ROLES.PURCHASE,
+      ),
+
+      child(
+        "purchase-orders",
+        "Purchase Orders",
+        "ClipboardList",
+        "/purchase/orders",
+        "purchase.orders",
+        ROLES.PURCHASE,
+      ),
+
+      child(
+        "purchase-grn",
+        "Goods Receipt",
+        "PackageCheck",
+        "/purchase/grn",
+        "purchase",
+        ROLES.PURCHASE_RECEIVING,
+      ),
+
+      child(
+        "purchase-invoices",
+        "Purchase Bills",
+        "ReceiptText",
+        "/purchase/invoices",
+        "purchase",
+        ROLES.PURCHASE,
+      ),
+
+      child(
+        "purchase-returns",
+        "Purchase Returns",
+        "Undo2",
+        "/purchase/returns",
+        "purchase",
+        ROLES.PURCHASE,
+      ),
+
+      child(
+        "supplier-payments",
+        "Supplier Payments",
+        "Wallet",
+        "/purchase/supplier-payments",
+        "purchase.supplierPayments",
+        ROLES.PURCHASE,
+      ),
     ],
   },
 
@@ -206,90 +241,90 @@ const menus = [
     icon: "Boxes",
     path: "/inventory",
     feature: "inventory",
-    roles: ["admin", "manager", "inventory"],
+    roles: ROLES.INVENTORY,
     order: 1,
+
     children: [
-      {
-        id: "inventory-products",
-        label: "Products",
-        icon: "Package",
-        path: "/inventory/products",
-        feature: "inventory.products",
-        roles: ["admin", "manager", "inventory"],
-        order: 1,
-      },
-      {
-        id: "inventory-categories",
-        label: "Categories",
-        icon: "Tags",
-        path: "/inventory/categories",
-        feature: "inventory.categories",
-        roles: ["admin", "manager", "inventory"],
-        order: 2,
-      },
-      {
-        id: "inventory-units",
-        label: "Units",
-        icon: "Ruler",
-        path: "/inventory/units",
-        feature: "inventory",
-        roles: ["admin", "manager", "inventory"],
-        order: 3,
-      },
-      {
-        id: "inventory-stock",
-        label: "Stock",
-        icon: "Warehouse",
-        path: "/inventory/stock",
-        feature: "inventory.stock",
-        roles: ["admin", "manager", "inventory"],
-        order: 4,
-      },
-      {
-        id: "inventory-stock-movements",
-        label: "Stock Movements",
-        icon: "ArrowLeftRight",
-        path: "/stock-movements",
-        feature: "inventory.stock",
-        roles: ["admin", "manager", "inventory"],
-        order: 5,
-      },
-      {
-        id: "inventory-warehouses",
-        label: "Warehouses",
-        icon: "Building2",
-        path: "/inventory/warehouses",
-        feature: "inventory.warehouses",
-        roles: ["admin", "manager", "inventory"],
-        order: 6,
-      },
-      {
-        id: "inventory-transfer",
-        label: "Stock Transfer",
-        icon: "ArrowLeftRight",
-        path: "/inventory/stock-transfer",
-        feature: "inventory.transfers",
-        roles: ["admin", "manager", "inventory"],
-        order: 7,
-      },
-      {
-        id: "inventory-adjustment",
-        label: "Stock Adjustment",
-        icon: "SlidersHorizontal",
-        path: "/inventory/stock-adjustment",
-        feature: "inventory.adjustments",
-        roles: ["admin", "manager", "inventory"],
-        order: 8,
-      },
-      {
-        id: "inventory-valuation",
-        label: "Stock Valuation",
-        icon: "IndianRupee",
-        path: "/inventory/stock-valuation",
-        feature: "inventory.reports",
-        roles: ["admin", "manager", "inventory"],
-        order: 9,
-      },
+      child(
+        "inventory-products",
+        "Products",
+        "Package",
+        "/inventory/products",
+        "inventory.products",
+        ROLES.INVENTORY,
+      ),
+
+      child(
+        "inventory-categories",
+        "Categories",
+        "Tags",
+        "/inventory/categories",
+        "inventory.categories",
+        ROLES.INVENTORY,
+      ),
+
+      child(
+        "inventory-units",
+        "Units",
+        "Ruler",
+        "/inventory/units",
+        "inventory",
+        ROLES.INVENTORY,
+      ),
+
+      child(
+        "inventory-stock",
+        "Stock",
+        "Warehouse",
+        "/inventory/stock",
+        "inventory.stock",
+        ROLES.INVENTORY,
+      ),
+
+      child(
+        "inventory-stock-movements",
+        "Stock Movements",
+        "ArrowLeftRight",
+        "/stock-movements",
+        "inventory.stock",
+        ROLES.INVENTORY,
+      ),
+
+      child(
+        "inventory-warehouses",
+        "Warehouses",
+        "Building2",
+        "/inventory/warehouses",
+        "inventory.warehouses",
+        ROLES.INVENTORY,
+      ),
+
+      child(
+        "inventory-transfer",
+        "Stock Transfer",
+        "ArrowLeftRight",
+        "/inventory/stock-transfer",
+        "inventory.transfers",
+        ROLES.INVENTORY,
+      ),
+
+      child(
+        "inventory-adjustment",
+        "Stock Adjustment",
+        "SlidersHorizontal",
+        "/inventory/stock-adjustment",
+        "inventory.adjustments",
+        ROLES.INVENTORY,
+      ),
+
+      child(
+        "inventory-valuation",
+        "Stock Valuation",
+        "IndianRupee",
+        "/inventory/stock-valuation",
+        "inventory.reports",
+        ROLES.INVENTORY,
+      ),
     ],
   },
 
@@ -300,36 +335,36 @@ const menus = [
     icon: "Users",
     path: "/customers",
     feature: "sales.customers",
-    roles: ["admin", "manager", "sales"],
+    roles: ROLES.SALES,
     order: 1,
+
     children: [
-      {
-        id: "customers-list",
-        label: "All Customers",
-        icon: "Users",
-        path: "/customers/list",
-        feature: "sales.customers",
-        roles: ["admin", "manager", "sales"],
-        order: 1,
-      },
-      {
-        id: "customers-groups",
-        label: "Customer Groups",
-        icon: "Tags",
-        path: "/customers/groups",
-        feature: "sales.customers",
-        roles: ["admin", "manager", "sales"],
-        order: 2,
-      },
-      {
-        id: "customers-outstanding",
-        label: "Outstanding",
-        icon: "IndianRupee",
-        path: "/customers/outstanding",
-        feature: "accounting.receivables",
-        roles: ["admin", "manager"],
-        order: 3,
-      },
+      child(
+        "customers-list",
+        "All Customers",
+        "Users",
+        "/customers/list",
+        "sales.customers",
+        ROLES.SALES,
+      ),
+
+      child(
+        "customers-groups",
+        "Customer Groups",
+        "Tags",
+        "/customers/groups",
+        "sales.customers",
+        ROLES.SALES,
+      ),
+
+      child(
+        "customers-outstanding",
+        "Outstanding",
+        "IndianRupee",
+        "/customers/outstanding",
+        "accounting.receivables",
+        ROLES.MANAGEMENT,
+      ),
     ],
   },
 
@@ -340,36 +375,36 @@ const menus = [
     icon: "Truck",
     path: "/suppliers",
     feature: "purchase.vendors",
-    roles: ["admin", "manager", "purchase"],
+    roles: ROLES.PURCHASE,
     order: 2,
+
     children: [
-      {
-        id: "suppliers-list",
-        label: "All Suppliers",
-        icon: "Truck",
-        path: "/suppliers/list",
-        feature: "purchase.vendors",
-        roles: ["admin", "manager", "purchase"],
-        order: 1,
-      },
-      {
-        id: "suppliers-groups",
-        label: "Supplier Groups",
-        icon: "Tags",
-        path: "/suppliers/groups",
-        feature: "purchase.vendors",
-        roles: ["admin", "manager", "purchase"],
-        order: 2,
-      },
-      {
-        id: "suppliers-outstanding",
-        label: "Outstanding",
-        icon: "IndianRupee",
-        path: "/suppliers/outstanding",
-        feature: "accounting.payables",
-        roles: ["admin", "manager"],
-        order: 3,
-      },
+      child(
+        "suppliers-list",
+        "All Suppliers",
+        "Truck",
+        "/suppliers/list",
+        "purchase.vendors",
+        ROLES.PURCHASE,
+      ),
+
+      child(
+        "suppliers-groups",
+        "Supplier Groups",
+        "Tags",
+        "/suppliers/groups",
+        "purchase.vendors",
+        ROLES.PURCHASE,
+      ),
+
+      child(
+        "suppliers-outstanding",
+        "Outstanding",
+        "IndianRupee",
+        "/suppliers/outstanding",
+        "accounting.payables",
+        ROLES.MANAGEMENT,
+      ),
     ],
   },
 
@@ -380,63 +415,108 @@ const menus = [
     icon: "BookOpen",
     path: "/accounting",
     feature: "accounting",
-    roles: ["admin", "manager"],
+    roles: ROLES.MANAGEMENT,
     order: 1,
+
     children: [
-      {
-        id: "accounting-chart",
-        label: "Chart of Accounts",
-        icon: "ListTree",
-        path: "/accounting/chart-of-accounts",
-        feature: "accounting.chartOfAccounts",
-        roles: ["admin", "manager"],
-        order: 1,
-      },
-      {
-        id: "accounting-journal",
-        label: "Journal Vouchers",
-        icon: "BookOpen",
-        path: "/accounting/journal",
-        feature: "accounting.journalEntries",
-        roles: ["admin", "manager"],
-        order: 2,
-      },
-      {
-        id: "accounting-ledger",
-        label: "Ledgers",
-        icon: "BookText",
-        path: "/accounting/ledger",
-        feature: "accounting.ledgers",
-        roles: ["admin", "manager"],
-        order: 3,
-      },
-      {
-        id: "accounting-receivables",
-        label: "Receivables",
-        icon: "ArrowDownCircle",
-        path: "/accounting/receivables",
-        feature: "accounting.receivables",
-        roles: ["admin", "manager"],
-        order: 4,
-      },
-      {
-        id: "accounting-payables",
-        label: "Payables",
-        icon: "ArrowUpCircle",
-        path: "/accounting/payables",
-        feature: "accounting.payables",
-        roles: ["admin", "manager"],
-        order: 5,
-      },
-      {
-        id: "accounting-bank-reconciliation",
-        label: "Bank Reconciliation",
-        icon: "Landmark",
-        path: "/accounting/bank-reconciliation",
-        feature: "bank.reconciliation",
-        roles: ["admin", "manager"],
-        order: 6,
-      },
+      child(
+        "accounting-chart",
+        "Chart of Accounts",
+        "ListTree",
+        "/accounting/chart-of-accounts",
+        "accounting.chartOfAccounts",
+        ROLES.MANAGEMENT,
+      ),
+
+      child(
+        "accounting-journal",
+        "Journal Vouchers",
+        "BookOpen",
+        "/accounting/journal",
+        "accounting.journalEntries",
+        ROLES.MANAGEMENT,
+      ),
+
+      child(
+        "accounting-ledger",
+        "Ledgers",
+        "BookText",
+        "/accounting/ledger",
+        "accounting.ledgers",
+        ROLES.MANAGEMENT,
+      ),
+
+      child(
+        "accounting-daybook",
+        "Day Book",
+        "CalendarDays",
+        "/accounting/daybook",
+        "accounting.journalEntries",
+        ROLES.MANAGEMENT,
+      ),
+
+      child(
+        "accounting-trial-balance",
+        "Trial Balance",
+        "Scale",
+        "/accounting/trial-balance",
+        "accounting.trialBalance",
+        ROLES.MANAGEMENT,
+      ),
+
+      child(
+        "accounting-balance-sheet",
+        "Balance Sheet",
+        "FileText",
+        "/accounting/balance-sheet",
+        "accounting.reports",
+        ROLES.MANAGEMENT,
+      ),
+
+      child(
+        "accounting-customer-ledger",
+        "Customer Ledger",
+        "Users",
+        "/accounting/customer-ledger",
+        "accounting.ledgers",
+        ROLES.MANAGEMENT,
+      ),
+
+      child(
+        "accounting-supplier-ledger",
+        "Supplier Ledger",
+        "Truck",
+        "/accounting/supplier-ledger",
+        "accounting.ledgers",
+        ROLES.MANAGEMENT,
+      ),
+
+      child(
+        "accounting-receivables",
+        "Receivables",
+        "ArrowDownCircle",
+        "/accounting/receivables",
+        "accounting.receivables",
+        ROLES.MANAGEMENT,
+      ),
+
+      child(
+        "accounting-payables",
+        "Payables",
+        "ArrowUpCircle",
+        "/accounting/payables",
+        "accounting.payables",
+        ROLES.MANAGEMENT,
+      ),
+
+      child(
+        "accounting-bank-reconciliation",
+        "Bank Reconciliation",
+        "Landmark",
+        "/accounting/bank-reconciliation",
+        "bank.reconciliation",
+        ROLES.MANAGEMENT,
+      ),
     ],
   },
 
@@ -447,45 +527,54 @@ const menus = [
     icon: "Landmark",
     path: "/payments",
     feature: "bank",
-    roles: ["admin", "manager"],
+    roles: ROLES.MANAGEMENT,
     order: 1,
+
     children: [
-      {
-        id: "bank-accounts",
-        label: "Bank Accounts",
-        icon: "Building2",
-        path: "/payments/bank-accounts",
-        feature: "bank.accounts",
-        roles: ["admin", "manager"],
-        order: 1,
-      },
-      {
-        id: "bank-receipts",
-        label: "Receipts",
-        icon: "ArrowDownCircle",
-        path: "/payments/receipts",
-        feature: "bank.receipts",
-        roles: ["admin", "manager"],
-        order: 2,
-      },
-      {
-        id: "bank-payments",
-        label: "Payments",
-        icon: "ArrowUpCircle",
-        path: "/payments/payments",
-        feature: "bank.payments",
-        roles: ["admin", "manager"],
-        order: 3,
-      },
-      {
-        id: "bank-transfer",
-        label: "Bank Transfer",
-        icon: "ArrowLeftRight",
-        path: "/payments/bank-transfer",
-        feature: "bank.transfers",
-        roles: ["admin", "manager"],
-        order: 4,
-      },
+      child(
+        "bank-accounts",
+        "Bank Accounts",
+        "Building2",
+        "/accounting/banks",
+        "bank.accounts",
+        ROLES.MANAGEMENT,
+      ),
+
+      child(
+        "bank-receipts",
+        "Receipts",
+        "ArrowDownCircle",
+        "/payments/receipts",
+        "bank.receipts",
+        ROLES.MANAGEMENT,
+      ),
+
+      child(
+        "bank-payments",
+        "Payments",
+        "ArrowUpCircle",
+        "/payments/payments",
+        "bank.payments",
+        ROLES.MANAGEMENT,
+      ),
+
+      child(
+        "bank-transfer",
+        "Bank Transfer",
+        "ArrowLeftRight",
+        "/payments/bank-transfer",
+        "bank.transfers",
+        ROLES.MANAGEMENT,
+      ),
+
+      child(
+        "bank-ledger",
+        "Bank Ledger",
+        "BookText",
+        "/accounting/bank-ledger",
+        "accounting.ledgers",
+        ROLES.MANAGEMENT,
+      ),
     ],
   },
 
@@ -496,36 +585,36 @@ const menus = [
     icon: "Wallet",
     path: "/expenses",
     feature: "expenses",
-    roles: ["admin", "manager"],
+    roles: ROLES.MANAGEMENT,
     order: 1,
+
     children: [
-      {
-        id: "expenses-list",
-        label: "All Expenses",
-        icon: "ReceiptText",
-        path: "/expenses/list",
-        feature: "expenses.list",
-        roles: ["admin", "manager"],
-        order: 1,
-      },
-      {
-        id: "expenses-categories",
-        label: "Expense Categories",
-        icon: "Tags",
-        path: "/expenses/categories",
-        feature: "expenses.categories",
-        roles: ["admin", "manager"],
-        order: 2,
-      },
-      {
-        id: "expenses-approval",
-        label: "Expense Approval",
-        icon: "CheckCircle",
-        path: "/expenses/approval",
-        feature: "expenses.approvals",
-        roles: ["admin", "manager"],
-        order: 3,
-      },
+      child(
+        "expenses-list",
+        "All Expenses",
+        "ReceiptText",
+        "/expenses/list",
+        "expenses.list",
+        ROLES.MANAGEMENT,
+      ),
+
+      child(
+        "expenses-categories",
+        "Expense Categories",
+        "Tags",
+        "/expenses/categories",
+        "expenses.categories",
+        ROLES.MANAGEMENT,
+      ),
+
+      child(
+        "expenses-approval",
+        "Expense Approval",
+        "CheckCircle",
+        "/expenses/approval",
+        "expenses.approvals",
+        ROLES.MANAGEMENT,
+      ),
     ],
   },
 
@@ -536,36 +625,36 @@ const menus = [
     icon: "ReceiptIndianRupee",
     path: "/gst-tax",
     feature: "gst",
-    roles: ["admin", "manager"],
+    roles: ROLES.MANAGEMENT,
     order: 1,
+
     children: [
-      {
-        id: "gst-summary",
-        label: "GST Summary",
-        icon: "ReceiptIndianRupee",
-        path: "/gst-tax/summary",
-        feature: "gst.summary",
-        roles: ["admin", "manager"],
-        order: 1,
-      },
-      {
-        id: "gst-reports",
-        label: "GSTR Reports",
-        icon: "BarChart3",
-        path: "/gst-tax/reports",
-        feature: "gst.gstrReports",
-        roles: ["admin", "manager"],
-        order: 2,
-      },
-      {
-        id: "gst-configuration",
-        label: "Tax Configuration",
-        icon: "Settings2",
-        path: "/gst-tax/configuration",
-        feature: "gst.taxConfiguration",
-        roles: ["admin"],
-        order: 3,
-      },
+      child(
+        "gst-summary",
+        "GST Summary",
+        "ReceiptIndianRupee",
+        "/gst-tax/summary",
+        "gst.summary",
+        ROLES.MANAGEMENT,
+      ),
+
+      child(
+        "gst-reports",
+        "GSTR Reports",
+        "BarChart3",
+        "/gst-tax/reports",
+        "gst.gstrReports",
+        ROLES.MANAGEMENT,
+      ),
+
+      child(
+        "gst-configuration",
+        "Tax Configuration",
+        "Settings2",
+        "/gst-tax/configuration",
+        "gst.taxConfiguration",
+        ROLES.ADMIN,
+      ),
     ],
   },
 
@@ -576,45 +665,45 @@ const menus = [
     icon: "Factory",
     path: "/production",
     feature: "production",
-    roles: ["admin", "manager", "inventory"],
+    roles: ROLES.INVENTORY,
     order: 1,
+
     children: [
-      {
-        id: "production-orders",
-        label: "Production Orders",
-        icon: "ClipboardPen",
-        path: "/production/orders",
-        feature: "production.orders",
-        roles: ["admin", "manager", "inventory"],
-        order: 1,
-      },
-      {
-        id: "production-bom",
-        label: "Bill of Materials",
-        icon: "Layers3",
-        path: "/production/bom",
-        feature: "production.bom",
-        roles: ["admin", "manager", "inventory"],
-        order: 2,
-      },
-      {
-        id: "production-work-orders",
-        label: "Work Orders",
-        icon: "ClipboardList",
-        path: "/production/work-orders",
-        feature: "production.workOrders",
-        roles: ["admin", "manager", "inventory"],
-        order: 3,
-      },
-      {
-        id: "production-reports",
-        label: "Production Reports",
-        icon: "BarChart3",
-        path: "/production/reports",
-        feature: "production.reports",
-        roles: ["admin", "manager"],
-        order: 4,
-      },
+      child(
+        "production-orders",
+        "Production Orders",
+        "ClipboardPen",
+        "/production/orders",
+        "production.orders",
+        ROLES.INVENTORY,
+      ),
+
+      child(
+        "production-bom",
+        "Bill of Materials",
+        "Layers3",
+        "/production/bom",
+        "production.bom",
+        ROLES.INVENTORY,
+      ),
+
+      child(
+        "production-work-orders",
+        "Work Orders",
+        "ClipboardList",
+        "/production/work-orders",
+        "production.workOrders",
+        ROLES.INVENTORY,
+      ),
+
+      child(
+        "production-reports",
+        "Production Reports",
+        "BarChart3",
+        "/production/reports",
+        "production.reports",
+        ROLES.MANAGEMENT,
+      ),
     ],
   },
 
@@ -625,45 +714,45 @@ const menus = [
     icon: "UsersRound",
     path: "/hr",
     feature: "hr",
-    roles: ["admin", "manager"],
+    roles: ROLES.MANAGEMENT,
     order: 1,
+
     children: [
-      {
-        id: "hr-employees",
-        label: "Employees",
-        icon: "UserRound",
-        path: "/hr/employees",
-        feature: "hr.employees",
-        roles: ["admin", "manager"],
-        order: 1,
-      },
-      {
-        id: "hr-attendance",
-        label: "Attendance",
-        icon: "CalendarDays",
-        path: "/hr/attendance",
-        feature: "hr.attendance",
-        roles: ["admin", "manager"],
-        order: 2,
-      },
-      {
-        id: "hr-leave",
-        label: "Leave",
-        icon: "CalendarDays",
-        path: "/hr/leave",
-        feature: "hr.leave",
-        roles: ["admin", "manager"],
-        order: 3,
-      },
-      {
-        id: "hr-payroll",
-        label: "Payroll",
-        icon: "CircleDollarSign",
-        path: "/hr/payroll",
-        feature: "hr.payroll",
-        roles: ["admin", "manager"],
-        order: 4,
-      },
+      child(
+        "hr-employees",
+        "Employees",
+        "UserRound",
+        "/hr/employees",
+        "hr.employees",
+        ROLES.MANAGEMENT,
+      ),
+
+      child(
+        "hr-attendance",
+        "Attendance",
+        "CalendarDays",
+        "/hr/attendance",
+        "hr.attendance",
+        ROLES.MANAGEMENT,
+      ),
+
+      child(
+        "hr-leave",
+        "Leave",
+        "CalendarDays",
+        "/hr/leave",
+        "hr.leave",
+        ROLES.MANAGEMENT,
+      ),
+
+      child(
+        "hr-payroll",
+        "Payroll",
+        "CircleDollarSign",
+        "/hr/payroll",
+        "hr.payroll",
+        ROLES.MANAGEMENT,
+      ),
     ],
   },
 
@@ -674,45 +763,45 @@ const menus = [
     icon: "Box",
     path: "/assets",
     feature: "assets",
-    roles: ["admin", "manager"],
+    roles: ROLES.MANAGEMENT,
     order: 1,
+
     children: [
-      {
-        id: "assets-list",
-        label: "All Assets",
-        icon: "Monitor",
-        path: "/assets/list",
-        feature: "assets.list",
-        roles: ["admin", "manager"],
-        order: 1,
-      },
-      {
-        id: "assets-categories",
-        label: "Asset Categories",
-        icon: "Tags",
-        path: "/assets/categories",
-        feature: "assets.categories",
-        roles: ["admin", "manager"],
-        order: 2,
-      },
-      {
-        id: "assets-depreciation",
-        label: "Depreciation",
-        icon: "Percent",
-        path: "/assets/depreciation",
-        feature: "assets.depreciation",
-        roles: ["admin", "manager"],
-        order: 3,
-      },
-      {
-        id: "assets-reports",
-        label: "Asset Reports",
-        icon: "BarChart3",
-        path: "/assets/reports",
-        feature: "assets.reports",
-        roles: ["admin", "manager"],
-        order: 4,
-      },
+      child(
+        "assets-list",
+        "All Assets",
+        "Monitor",
+        "/assets/list",
+        "assets.list",
+        ROLES.MANAGEMENT,
+      ),
+
+      child(
+        "assets-categories",
+        "Asset Categories",
+        "Tags",
+        "/assets/categories",
+        "assets.categories",
+        ROLES.MANAGEMENT,
+      ),
+
+      child(
+        "assets-depreciation",
+        "Depreciation",
+        "Percent",
+        "/assets/depreciation",
+        "assets.depreciation",
+        ROLES.MANAGEMENT,
+      ),
+
+      child(
+        "assets-reports",
+        "Asset Reports",
+        "BarChart3",
+        "/assets/reports",
+        "assets.reports",
+        ROLES.MANAGEMENT,
+      ),
     ],
   },
 
@@ -723,45 +812,54 @@ const menus = [
     icon: "BarChart3",
     path: "/reports",
     feature: "reports",
-    roles: ["admin", "manager", "sales", "purchase", "inventory", "viewer"],
+    roles: ROLES.ALL,
     order: 1,
+
     children: [
-      {
-        id: "reports-sales",
-        label: "Sales Reports",
-        icon: "ChartIcon",
-        path: "/reports/sales",
-        feature: "reports.sales",
-        roles: ["admin", "manager", "sales"],
-        order: 1,
-      },
-      {
-        id: "reports-purchase",
-        label: "Purchase Reports",
-        icon: "ChartIcon",
-        path: "/reports/purchase",
-        feature: "reports.purchase",
-        roles: ["admin", "manager", "purchase"],
-        order: 2,
-      },
-      {
-        id: "reports-inventory",
-        label: "Inventory Reports",
-        icon: "BarChart3",
-        path: "/reports/inventory",
-        feature: "reports.inventory",
-        roles: ["admin", "manager", "inventory"],
-        order: 3,
-      },
-      {
-        id: "reports-accounting",
-        label: "Accounting Reports",
-        icon: "PieChart",
-        path: "/reports/accounting",
-        feature: "reports.accounting",
-        roles: ["admin", "manager"],
-        order: 4,
-      },
+      child(
+        "reports-sales",
+        "Sales Reports",
+        "BarChart3",
+        "/reports/sales",
+        "reports.sales",
+        ROLES.SALES,
+      ),
+
+      child(
+        "reports-purchase",
+        "Purchase Reports",
+        "ShoppingBag",
+        "/reports/purchase",
+        "reports.purchase",
+        ROLES.PURCHASE,
+      ),
+
+      child(
+        "reports-inventory",
+        "Inventory Reports",
+        "Boxes",
+        "/reports/inventory",
+        "reports.inventory",
+        ROLES.INVENTORY,
+      ),
+
+      child(
+        "reports-accounting",
+        "Accounting Reports",
+        "PieChart",
+        "/reports/accounting",
+        "reports.accounting",
+        ROLES.MANAGEMENT,
+      ),
+
+      child(
+        "reports-outstanding",
+        "Outstanding Reports",
+        "IndianRupee",
+        "/reports/outstanding",
+        "reports.accounting",
+        ROLES.MANAGEMENT,
+      ),
     ],
   },
 
@@ -772,72 +870,163 @@ const menus = [
     icon: "Settings",
     path: "/settings",
     feature: "settings",
-    roles: ["admin"],
+    roles: ROLES.ADMIN,
     order: 1,
+
     children: [
-      {
-        id: "settings-company",
-        label: "Company Settings",
-        icon: "Building2",
-        path: "/settings/company",
-        feature: "settings.company",
-        roles: ["admin"],
-        order: 1,
-      },
-      {
-        id: "settings-users",
-        label: "Users",
-        icon: "Users",
-        path: "/settings/users",
-        feature: "settings.users",
-        roles: ["admin"],
-        order: 2,
-      },
-      {
-        id: "settings-roles",
-        label: "Roles & Permissions",
-        icon: "UsersRound",
-        path: "/settings/roles",
-        feature: "settings.roles",
-        roles: ["admin"],
-        order: 3,
-      },
-      {
-        id: "settings-appearance",
-        label: "Appearance",
-        icon: "Settings2",
-        path: "/settings/appearance",
-        feature: "settings.appearance",
-        roles: ["admin"],
-        order: 4,
-      },
-      {
-        id: "settings-notifications",
-        label: "Notifications",
-        icon: "Bell",
-        path: "/settings/notifications",
-        feature: "settings.notifications",
-        roles: ["admin"],
-        order: 5,
-      },
+      child(
+        "settings-company",
+        "Company Settings",
+        "Building2",
+        "/settings/company",
+        "settings.company",
+        ROLES.ADMIN,
+      ),
+
+      child(
+        "settings-users",
+        "Users",
+        "Users",
+        "/settings/users",
+        "settings.users",
+        ROLES.ADMIN,
+      ),
+
+      child(
+        "settings-roles",
+        "Roles & Permissions",
+        "UsersRound",
+        "/settings/roles",
+        "settings.roles",
+        ROLES.ADMIN,
+      ),
+
+      child(
+        "settings-appearance",
+        "Appearance",
+        "Settings2",
+        "/settings/appearance",
+        "settings.appearance",
+        ROLES.ADMIN,
+      ),
+
+      child(
+        "settings-notifications",
+        "Notifications",
+        "Bell",
+        "/settings/notifications",
+        "settings.notifications",
+        ROLES.ADMIN,
+      ),
     ],
   },
 ];
 
+const buildChild = (
+  entry,
+  index,
+  parentRoles,
+) => ({
+  id: entry.id,
+  label: entry.label,
+  icon: entry.icon || null,
+  path: entry.path || null,
+  feature: entry.feature
+    ? normalize(entry.feature)
+    : null,
+
+  roles: [...(entry.roles || parentRoles)],
+  order: entry.order ?? index + 1,
+  isActive: entry.isActive !== false,
+});
+
+const validateMenus = () => {
+  const parentKeys = new Set();
+  const childIds = new Set();
+
+  for (const menu of menus) {
+    const parentKey = `${menu.group}:${menu.label}`;
+
+    if (parentKeys.has(parentKey)) {
+      throw new Error(
+        `Duplicate parent menu: ${parentKey}`,
+      );
+    }
+
+    parentKeys.add(parentKey);
+
+    if (
+      !menu.path?.startsWith("/") ||
+      menu.path.includes(":")
+    ) {
+      throw new Error(
+        `Invalid parent navigation path: ${menu.label}`,
+      );
+    }
+
+    if (
+      !Array.isArray(menu.roles) ||
+      menu.roles.length === 0
+    ) {
+      throw new Error(
+        `Missing roles for menu: ${menu.label}`,
+      );
+    }
+
+    for (const entry of menu.children || []) {
+      if (!entry.id || childIds.has(entry.id)) {
+        throw new Error(
+          `Missing or duplicate child ID: ${entry.id}`,
+        );
+      }
+
+      childIds.add(entry.id);
+
+      if (
+        !entry.path?.startsWith("/") ||
+        entry.path.includes(":")
+      ) {
+        throw new Error(
+          `Invalid child navigation path: ${entry.label}`,
+        );
+      }
+
+      for (const role of entry.roles || menu.roles) {
+        if (!menu.roles.includes(role)) {
+          throw new Error(
+            `Child "${entry.label}" allows "${role}" but its parent "${menu.label}" does not`,
+          );
+        }
+      }
+    }
+  }
+};
+
 const seedMenus = async () => {
   try {
+    validateMenus();
+
     console.log("Connecting to MongoDB...");
 
     await mongoose.connect(MONGODB_URI);
 
-    console.log("Connected to MongoDB");
+    console.log(
+      `Connected to database: ${mongoose.connection.name}`,
+    );
 
     let created = 0;
     let updated = 0;
+    let unchanged = 0;
+    let childCount = 0;
 
     for (const menu of menus) {
-      const children = (menu.children || []).map((child, index) =>
-        buildChild(child, index, menu.roles),
+      const children = (menu.children || []).map(
+        (entry, index) =>
+          buildChild(
+            entry,
+            index,
+            menu.roles,
+          ),
       );
 
       const filter = {
@@ -846,53 +1035,62 @@ const seedMenus = async () => {
         label: menu.label,
       };
 
-      const update = {
-        $set: {
-          appCode: APP_CODE,
-          group: menu.group,
-          groupOrder: menu.groupOrder,
-          label: menu.label,
-          icon: menu.icon,
-          path: menu.path,
-          feature: normalize(menu.feature),
-          roles: menu.roles,
-          order: menu.order,
-          children,
-          isActive: true,
+      const result = await Menu.updateOne(
+        filter,
+        {
+          $set: {
+            appCode: APP_CODE,
+            group: menu.group,
+            groupOrder: menu.groupOrder,
+            label: menu.label,
+            icon: menu.icon,
+            path: menu.path,
+            feature: normalize(menu.feature),
+            roles: [...menu.roles],
+            order: menu.order,
+            children,
+            isActive: true,
+          },
         },
-      };
+        {
+          upsert: true,
+          runValidators: true,
+          setDefaultsOnInsert: true,
+        },
+      );
 
-      const result = await Menu.findOneAndUpdate(filter, update, {
-        upsert: true,
-        new: true,
-        setDefaultsOnInsert: true,
-      });
-
-      if (result.createdAt.getTime() === result.updatedAt.getTime()) {
+      if (result.upsertedCount > 0) {
         created += 1;
-      } else {
+      } else if (result.modifiedCount > 0) {
         updated += 1;
+      } else {
+        unchanged += 1;
       }
 
+      childCount += children.length;
+
       console.log(
-        `✔ ${menu.group} → ${menu.label} (${children.length} submenus)`,
+        `${menu.group} → ${menu.label}: ${children.length} submenu(s)`,
       );
     }
 
-    console.log("\nMenu seeding completed");
+    console.log("");
+    console.log("Menu seeding completed");
+    console.log(`Application: ${APP_CODE}`);
     console.log(`Created: ${created}`);
     console.log(`Updated: ${updated}`);
-    console.log(`Total parent menus: ${menus.length}`);
-
-    await mongoose.connection.close();
-
-    process.exit(0);
+    console.log(`Unchanged: ${unchanged}`);
+    console.log(`Parent menus: ${menus.length}`);
+    console.log(`Child menus: ${childCount}`);
   } catch (error) {
-    console.error("Menu seeding failed:", error);
+    console.error(
+      "Menu seeding failed:",
+      error?.message || error,
+    );
 
-    await mongoose.connection.close();
-
-    process.exit(1);
+    process.exitCode = 1;
+  } finally {
+    await mongoose.disconnect();
   }
 };
 
