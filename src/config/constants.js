@@ -95,6 +95,9 @@ const ROLE_PERMISSIONS = {
     "gst.gstrReports",
     "bankReconciliation.view",
     "bankReconciliation.reconcile",
+    "customers-outstanding",
+    "customerOutstanding.view",
+    "supplierOutstanding.view",
   ],
 
   accountant: [
@@ -133,6 +136,9 @@ const ROLE_PERMISSIONS = {
     "gstSummary.view",
     "gst.gstrReports",
     "accounting-bank-reconciliation",
+    "customers-outstanding",
+    "customerOutstanding.view",
+    "supplierOutstanding.view",
   ],
 
   sales: [
