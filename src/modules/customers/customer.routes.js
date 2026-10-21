@@ -16,6 +16,7 @@ const {
 const verifyToken = require("../../middleware/authMiddleware");
 const resolveTenant = require("../../middleware/tenantMiddleware");
 const requirePermission = require("../../middleware/permissionMiddleware");
+const { importCustomers } = require("./customer.import");
 
 const router = express.Router();
 
@@ -48,5 +49,9 @@ router.delete(
   requirePermission("customer.delete"),
   deleteCustomer,
 );
-
+router.post(
+  "/bulk-import",
+  requirePermission("customer.create"),
+  importCustomers,
+);
 module.exports = router;

@@ -142,7 +142,7 @@ app.use("/api/gstr-reports", gstrReportsRoutes);
 app.use("/api/bank-reconciliation", bankReconciliationRoutes);
 app.use("/api/accounting/reports", trialBalanceRoutes);
 app.use("/api/accounting/outstanding", outcustsupRoutes);
-
+app.use(express.json({ limit: "5mb" }));
 app.use((req, res) =>
   res.status(404).json({
     success: false,

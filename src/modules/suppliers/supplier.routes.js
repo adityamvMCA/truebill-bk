@@ -18,6 +18,7 @@ const resolveTenant = require("../../middleware/tenantMiddleware");
 const requirePermission = require(
   "../../middleware/permissionMiddleware",
 );
+const { importSuppliers } = require("./supplier.import");
 
 const router = express.Router();
 
@@ -54,5 +55,9 @@ router.delete(
   requirePermission("supplier.delete"),
   deleteSupplier,
 );
-
+router.post(
+  "/import",
+  requirePermission("supplier.create"),
+  importSuppliers,
+);
 module.exports = router;

@@ -122,6 +122,7 @@ const validateCustomer = (schema) => (req, res, next) => {
 };
 
 module.exports = {
+  createCustomerSchema,
   validateCreateCustomer: validateCustomer(createCustomerSchema),
   validateUpdateCustomer: validateCustomer(updateCustomerSchema),
 };

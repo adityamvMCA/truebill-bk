@@ -121,7 +121,7 @@ const validateSupplier = (schema) => (req, res, next) => {
 };
 
 module.exports = {
+  createSupplierSchema,
   validateCreateSupplier: validateSupplier(createSupplierSchema),
-
   validateUpdateSupplier: validateSupplier(updateSupplierSchema),
 };
