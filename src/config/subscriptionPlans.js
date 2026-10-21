@@ -46,6 +46,7 @@ const FEATURE_TREE = {
     "accounting.ledgers",
     "accounting.trialBalance",
     "accounting.reports",
+    "customerOutstanding.view" 
   ],
 
   gst: ["gst.summary", "gst.gstrReports", "gst.taxConfiguration", "taxConfiguration.view",
@@ -95,6 +96,8 @@ const FEATURE_TREE = {
     "reports.purchase",
     "reports.inventory",
     "reports.accounting",
+    "customerOutstanding.view",
+     "supplierOutstanding.view",
   ],
 
   settings: [
