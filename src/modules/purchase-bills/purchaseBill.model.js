@@ -226,14 +226,19 @@ const purchaseBillSchema = new mongoose.Schema(
 
     status: {
       type: String,
-      enum: ["DRAFT", "POSTED", "CANCELLED"],
-      default: "DRAFT",
+
+      // DRAFT is retained only for existing records.
+      // New bills are created and posted in one transaction.
+      enum: ["CREATED", "POSTED", "CANCELLED", "DRAFT"],
+
+      default: "CREATED",
       required: true,
     },
-
     paymentStatus: {
       type: String,
-      enum: ["UNPAID", "PARTIALLY_PAID", "PAID"],
+
+      enum: ["UNPAID", "PARTIALLY_PAID", "PAID", "SETTLED"],
+
       default: "UNPAID",
       required: true,
     },
@@ -289,6 +294,21 @@ const purchaseBillSchema = new mongoose.Schema(
       ref: "User",
       required: true,
     },
+    sourceGoodsReceiptId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "GoodsReceipt",
+      default: null,
+      immutable: true,
+    },
+    returnedAmountPaise: {
+      ...integerPaise(),
+      default: 0,
+    },
+
+    supplierCreditAmountPaise: {
+      ...integerPaise(),
+      default: 0,
+    },
   },
   {
     timestamps: true,
@@ -320,7 +340,20 @@ purchaseBillSchema.index({
   status: 1,
   billDate: -1,
 });
+purchaseBillSchema.index(
+  {
+    tenantId: 1,
+    sourceGoodsReceiptId: 1,
+  },
+  {
+    unique: true,
 
+    partialFilterExpression: {
+      sourceGoodsReceiptId: { $type: "objectId" },
+      isDeleted: false,
+    },
+  },
+);
 purchaseBillSchema.index({
   tenantId: 1,
   supplierId: 1,

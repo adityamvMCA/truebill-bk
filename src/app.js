@@ -36,6 +36,17 @@ const gstrReportsRoutes = require("./modules/accounting/gstrReports/gstrReports.
 const bankReconciliationRoutes = require("./modules/accounting/bankreconciliation/bankReconciliation.routes");
 const trialBalanceRoutes = require("./modules/accounting/journals/trialBalance/trialBalance.routes");
 const outcustsupRoutes = require("./modules/accounting/oustanding/outstanding.routes");
+const purchaseRequisitionRoutes = require("./modules/purchase-requisitions/purchaseRequisition.routes");
+const purchaseRfqRoutes = require("./modules/purchase-rfqs/purchaseRfq.routes");
+const supplierQuotationRoutes = require("./modules/supplier-quotations/supplierQuotation.routes");
+const quotationComparisonRoutes = require("./modules/quotation-comparison/quotationComparison.routes");
+const purchaseOrderRoutes = require("./modules/purchase-orders/purchaseOrder.routes");
+const goodsReceiptRoutes = require(
+  "./modules/goods-receipts/goodsReceipt.routes",
+);
+const purchaseReturnRoutes = require(
+  "./modules/purchase-returns/purchaseReturn.routes",
+);
 const app = express();
 
 app.set("trust proxy", 1);
@@ -142,6 +153,13 @@ app.use("/api/gstr-reports", gstrReportsRoutes);
 app.use("/api/bank-reconciliation", bankReconciliationRoutes);
 app.use("/api/accounting/reports", trialBalanceRoutes);
 app.use("/api/accounting/outstanding", outcustsupRoutes);
+app.use("/api/purchase-requisitions", purchaseRequisitionRoutes);
+app.use("/api/purchase-rfqs", purchaseRfqRoutes);
+app.use("/api/supplier-quotations", supplierQuotationRoutes);
+app.use("/api/quotation-comparison", quotationComparisonRoutes);
+app.use("/api/purchase-orders", purchaseOrderRoutes);
+app.use("/api/goods-receipts", goodsReceiptRoutes);
+app.use("/api/purchase-returns", purchaseReturnRoutes);
 app.use(express.json({ limit: "5mb" }));
 app.use((req, res) =>
   res.status(404).json({

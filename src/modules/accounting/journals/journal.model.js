@@ -93,6 +93,7 @@ const journalSchema = new mongoose.Schema(
         "SALES_INVOICE",
         "CUSTOMER_RECEIPT",
         "SALES_RETURN",
+        "PURCHASE_RETURN",
       ],
       required: true,
     },

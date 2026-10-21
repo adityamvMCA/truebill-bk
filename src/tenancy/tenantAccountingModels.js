@@ -33,6 +33,11 @@ const LegacySalesReturn = require("../modules/sales-returns/salesReturn.model");
 const taxConfigurationSchema = require("../modules/accounting/taxconfiguration/taxConfiguration.model");
 const BankClearingSchema = require("../modules/accounting/bankreconciliation/bankClearing.model");
 const BankReconciliationschema = require("../modules/accounting/bankreconciliation/bankReconciliation.model");
+const LegacyPurchaseRequisition = require("../modules/purchase-requisitions/purchaseRequisition.model");
+const LegacyPurchaseRfq = require("../modules/purchase-rfqs/purchaseRfq.model");
+const LegacySupplierQuotation = require("../modules/supplier-quotations/supplierQuotation.model");
+const LegacyPurchaseOrder = require("../modules/purchase-orders/purchaseOrder.model");
+const LegacyGoodsReceipt = require("../modules/goods-receipts/goodsReceipt.model");
 const assertConnection = (connection) => {
   if (
     !connection ||
@@ -46,11 +51,6 @@ const assertConnection = (connection) => {
     throw new Error("The database connection is not ready");
   }
 };
-
-/* ==========================================
-   SOURCE MODEL VALIDATION
-   ========================================== */
-
 const assertSourceModel = (sourceModel, label) => {
   if (
     typeof sourceModel !== "function" ||
@@ -77,11 +77,6 @@ const assertSourceModel = (sourceModel, label) => {
 
   return sourceModel;
 };
-
-/* ==========================================
-   REGISTER MODEL ON TENANT CONNECTION
-   ========================================== */
-
 const registerModel = (connection, sourceModel, label) => {
   assertSourceModel(sourceModel, label);
 
@@ -99,11 +94,6 @@ const registerModel = (connection, sourceModel, label) => {
 
   return connection.model(name, schema, sourceModel.collection.name);
 };
-
-/* ==========================================
-   ACCOUNTING MODEL VALIDATION
-   ========================================== */
-
 const assertAccountingModels = (models) => {
   if (!models || typeof models !== "object") {
     throw new Error("Accounting models must be provided");
@@ -127,11 +117,7 @@ const assertAccountingModels = (models) => {
     LedgerGroup,
   };
 };
-
-/* ==========================================
-   TENANT MODEL REGISTRY
-   ========================================== */
-
+const LegacyPurchaseReturn = require("../modules/purchase-returns/purchaseReturn.model");
 const getTenantAccountingModels = (connection) => {
   assertConnection(connection);
 
@@ -156,6 +142,12 @@ const getTenantAccountingModels = (connection) => {
     TaxConfiguration: taxConfigurationSchema,
     BankClearing: BankClearingSchema,
     BankReconciliation: BankReconciliationschema,
+    PurchaseRequisition: LegacyPurchaseRequisition,
+    PurchaseRfq: LegacyPurchaseRfq,
+    SupplierQuotation: LegacySupplierQuotation,
+    PurchaseOrder: LegacyPurchaseOrder,
+    GoodsReceipt: LegacyGoodsReceipt,
+    PurchaseReturn: LegacyPurchaseReturn,
   };
 
   const models = {};
@@ -166,11 +158,6 @@ const getTenantAccountingModels = (connection) => {
 
   return models;
 };
-
-/* ==========================================
-   EXISTING SEED COMPATIBILITY
-   ========================================== */
-
 const resolveAccountingSeedModels = (models) => {
   // Preserve existing callers.
   // Invalid explicit context must never fall back.

@@ -28,15 +28,6 @@ const router = express.Router();
 
 router.use(verifyToken, resolveTenant);
 
-const checkPostPermission = requirePermission("purchaseBill.post");
-
-const requirePostPermissionForCreate = (req, res, next) => {
-  if (req.body.action === "SAVE_AND_POST") {
-    return checkPostPermission(req, res, next);
-  }
-
-  return next();
-};
 
 router.get(
   "/",
@@ -48,8 +39,8 @@ router.get(
 router.post(
   "/",
   requirePermission("purchaseBill.create"),
+  requirePermission("purchaseBill.post"),
   validateCreatePurchaseBill,
-  requirePostPermissionForCreate,
   createPurchaseBill,
 );
 

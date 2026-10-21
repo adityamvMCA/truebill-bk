@@ -200,252 +200,6 @@ const getSupplier = async ({
   return supplier;
 };
 
-const calculateBill = async ({ models, tenantId, payload, session }) => {
-  const { Supplier, Product, Ledger } = models;
-
-  const supplier = await getSupplier({
-    Supplier,
-    Ledger,
-    tenantId,
-    supplierId: payload.supplierId,
-    session,
-  });
-
-  const supplierInvoiceNumber = normalizeText(payload.supplierInvoiceNumber);
-
-  if (!supplierInvoiceNumber || supplierInvoiceNumber.length > 100) {
-    throw createError("A valid supplier invoice number is required");
-  }
-
-  const billDate = new Date(payload.billDate);
-
-  const dueDate = new Date(payload.dueDate);
-
-  if (
-    !payload.billDate ||
-    !payload.dueDate ||
-    Number.isNaN(billDate.getTime()) ||
-    Number.isNaN(dueDate.getTime())
-  ) {
-    throw createError("Valid billDate and dueDate are required");
-  }
-
-  if (dueDate < billDate) {
-    throw createError("Due date cannot be before bill date");
-  }
-
-  if (!["NONE", "INTRASTATE", "INTERSTATE"].includes(payload.taxMode)) {
-    throw createError("Invalid taxMode");
-  }
-
-  if (
-    !Array.isArray(payload.items) ||
-    !payload.items.length ||
-    payload.items.length > 200
-  ) {
-    throw createError("A bill requires between 1 and 200 items");
-  }
-
-  if (
-    payload.updateStock !== undefined &&
-    typeof payload.updateStock !== "boolean"
-  ) {
-    throw createError("updateStock must be a boolean");
-  }
-
-  const productIds = payload.items.map((item) => {
-    validateObjectId(item.productId, "productId");
-
-    return String(item.productId).toLowerCase();
-  });
-
-  if (new Set(productIds).size !== productIds.length) {
-    throw createError("A product can appear only once in a bill");
-  }
-
-  const products = await Product.find({
-    _id: { $in: productIds },
-    tenantId,
-    status: "ACTIVE",
-    isDeleted: false,
-  })
-    .session(session)
-    .lean();
-
-  if (products.length !== productIds.length) {
-    throw createError(
-      "One or more products are missing, inactive, or belong to another tenant",
-      409,
-    );
-  }
-
-  const productMap = new Map(
-    products.map((product) => [String(product._id), product]),
-  );
-
-  const purchaseLedgerCache = new Map();
-
-  const totals = {
-    grossAmountPaise: 0,
-    discountAmountPaise: 0,
-    taxableAmountPaise: 0,
-    cgstAmountPaise: 0,
-    sgstAmountPaise: 0,
-    igstAmountPaise: 0,
-    totalAmountPaise: 0,
-  };
-
-  const items = [];
-
-  for (const input of payload.items) {
-    const product = productMap.get(String(input.productId).toLowerCase());
-
-    const quantityMilli = scaledNumber({
-      value: input.quantity,
-      scale: 1000,
-      minimum: 0.001,
-      maximum: 1000000,
-      fieldName: `Quantity for ${product.name}`,
-    });
-
-    const discountBasisPoints = scaledNumber({
-      value: input.discountPercent ?? 0,
-      scale: 100,
-      minimum: 0,
-      maximum: 100,
-      fieldName: `Discount for ${product.name}`,
-    });
-
-    if (typeof input.unitRate !== "number" || input.unitRate > 1000000000) {
-      throw createError(`Invalid unit rate for ${product.name}`);
-    }
-
-    const unitRatePaise = rupeesToPaise(input.unitRate, "Unit rate");
-
-    const gstRate = input.gstRate ?? product.gstRate;
-
-    if (![0, 3, 5, 12, 18, 28].includes(gstRate)) {
-      throw createError(`Invalid GST rate for ${product.name}`);
-    }
-
-    if (payload.taxMode === "NONE" && gstRate !== 0) {
-      throw createError(
-        `GST rate must be zero for ${product.name} when taxMode is NONE`,
-      );
-    }
-
-    const taxCreditEligible = input.taxCreditEligible ?? false;
-
-    if (typeof taxCreditEligible !== "boolean") {
-      throw createError("taxCreditEligible must be a boolean");
-    }
-
-    if (taxCreditEligible && !supplier.gstNo) {
-      throw createError(
-        "Supplier GST number is required when claiming input tax credit",
-      );
-    }
-
-    const cacheKey = product.purchaseLedgerId
-      ? String(product.purchaseLedgerId)
-      : "DEFAULT_PURCHASE";
-
-    if (!purchaseLedgerCache.has(cacheKey)) {
-      const ledger = await getPurchaseLedger({
-        Ledger,
-        tenantId,
-        ledgerId: product.purchaseLedgerId,
-        session,
-      });
-
-      purchaseLedgerCache.set(cacheKey, ledger);
-    }
-
-    const purchaseLedger = purchaseLedgerCache.get(cacheKey);
-
-    const grossAmountPaise = multiplyDivide(unitRatePaise, quantityMilli, 1000);
-
-    const discountAmountPaise = multiplyDivide(
-      grossAmountPaise,
-      discountBasisPoints,
-      10000,
-    );
-
-    const taxableAmountPaise = grossAmountPaise - discountAmountPaise;
-
-    const taxAmountPaise = multiplyDivide(taxableAmountPaise, gstRate, 100);
-
-    let cgstAmountPaise = 0;
-    let sgstAmountPaise = 0;
-    let igstAmountPaise = 0;
-
-    if (payload.taxMode === "INTRASTATE") {
-      cgstAmountPaise = Math.floor(taxAmountPaise / 2);
-
-      sgstAmountPaise = taxAmountPaise - cgstAmountPaise;
-    } else if (payload.taxMode === "INTERSTATE") {
-      igstAmountPaise = taxAmountPaise;
-    }
-
-    const totalAmountPaise = addAmounts(taxableAmountPaise, taxAmountPaise);
-
-    const item = {
-      productId: product._id,
-      productCode: product.productCode,
-      productName: product.name,
-      productType: product.type,
-      trackInventory:
-        product.type === "GOODS" ? Boolean(product.trackInventory) : false,
-      unit: product.unit,
-      hsnSacCode: product.hsnSacCode || null,
-      quantity: quantityMilli / 1000,
-      unitRatePaise,
-      discountPercent: discountBasisPoints / 100,
-      gstRate,
-      taxCreditEligible,
-      purchaseLedgerId: purchaseLedger._id,
-      grossAmountPaise,
-      discountAmountPaise,
-      taxableAmountPaise,
-      cgstAmountPaise,
-      sgstAmountPaise,
-      igstAmountPaise,
-      totalAmountPaise,
-    };
-
-    items.push(item);
-
-    for (const field of Object.keys(totals)) {
-      totals[field] = addAmounts(totals[field], item[field]);
-    }
-  }
-
-  return {
-    supplierId: supplier._id,
-    supplierCode: supplier.supplierCode,
-    supplierName: supplier.supplierName,
-    supplierLedgerId: supplier.ledgerId,
-    supplierGstNo: supplier.gstNo || null,
-    supplierInvoiceNumber,
-    supplierInvoiceNumberNormalized: supplierInvoiceNumber.toUpperCase(),
-    billDate,
-    dueDate,
-    currency: "INR",
-    paymentTerms:
-      normalizeText(payload.paymentTerms) ||
-      supplier.paymentTerms ||
-      "Due on Receipt",
-    taxMode: payload.taxMode,
-    updateStock: payload.updateStock ?? false,
-    items,
-    ...totals,
-    paidAmountPaise: 0,
-    outstandingAmountPaise: totals.totalAmountPaise,
-    paymentStatus: "UNPAID",
-    notes: normalizeText(payload.notes) || null,
-  };
-};
-
 const ensureNoDuplicateInvoice = async ({
   PurchaseBill,
   tenantId,
@@ -495,16 +249,15 @@ const getDraftForUpdate = async ({
     throw createError("Purchase bill not found", 404);
   }
 
-  if (bill.status !== "DRAFT") {
+  if (!["CREATED", "DRAFT"].includes(bill.status)) {
     throw createError(
-      "Only draft purchase bills can be edited, posted, or deleted",
+      "Only unposted purchase bills can be edited, posted, or deleted",
       409,
     );
   }
 
   return bill;
 };
-
 const createAudit = async ({
   AuditLog,
   tenantId,
@@ -648,6 +401,506 @@ const buildJournalLines = async ({ models, tenantId, bill, session }) => {
   return lines;
 };
 
+const notifyBillPosted = async ({ tenantId, userId, bill }) => {
+  try {
+    await NotificationService.create({
+      tenantId,
+      userId,
+      type: "PURCHASE_BILL",
+      title: "Purchase bill posted",
+      message: `${bill.billNumber} for ${bill.supplierName} was posted successfully.`,
+      icon: "purchase-order",
+      priority: "NORMAL",
+      route: "purchaseinvoices",
+      data: {
+        purchaseBillId: bill._id.toString(),
+        billNumber: bill.billNumber,
+        supplierId: bill.supplierId.toString(),
+        totalAmountPaise: bill.totalAmountPaise,
+      },
+    });
+  } catch (error) {
+    console.error(
+      "Purchase bill notification failed:",
+      error?.message || error,
+    );
+  }
+};
+
+const translateDuplicateError = (error) => {
+  if (error?.code === 11000) {
+    return createError(
+      "Purchase bill number or supplier invoice number already exists",
+      409,
+    );
+  }
+
+  return error;
+};
+
+/* ==========================================
+   GOODS RECEIPT VALIDATION
+
+   Keep this helper at file scope.
+   Do not place it inside calculateBill().
+   ========================================== */
+
+const validateReceiptForBill = async ({
+  models,
+  tenantId,
+  payload,
+  supplierId,
+  billItems,
+  session,
+}) => {
+  const sourceGoodsReceiptId = payload.sourceGoodsReceiptId;
+
+  // Direct bill: no receipt reference.
+  if (sourceGoodsReceiptId === undefined || sourceGoodsReceiptId === null) {
+    return null;
+  }
+
+  validateObjectId(sourceGoodsReceiptId, "sourceGoodsReceiptId");
+
+  if (payload.updateStock === true) {
+    throw createError(
+      "Receipt-linked bills cannot update stock. The Goods Receipt already handled stock.",
+      409,
+    );
+  }
+
+  if (!models.GoodsReceipt) {
+    throw createError(
+      "GoodsReceipt is not registered on the tenant connection",
+      500,
+    );
+  }
+
+  if (
+    models.PurchaseBill &&
+    models.GoodsReceipt.db !== models.PurchaseBill.db
+  ) {
+    throw createError(
+      "GoodsReceipt and PurchaseBill must use the same tenant connection",
+      500,
+    );
+  }
+
+  const receipt = await models.GoodsReceipt.findOne({
+    _id: sourceGoodsReceiptId,
+    tenantId,
+    supplierId,
+    status: "CREATED",
+  })
+    .session(session)
+    .lean();
+
+  if (!receipt) {
+    throw createError("Goods Receipt not found for the selected supplier", 404);
+  }
+
+  if (!Array.isArray(receipt.items) || receipt.items.length === 0) {
+    throw createError("The selected Goods Receipt has no items", 409);
+  }
+
+  if (!Array.isArray(billItems) || billItems.length === 0) {
+    throw createError("Bill items are required for receipt validation");
+  }
+
+  const toQuantityMilli = (quantity, label) => {
+    const scaled = quantity * 1000;
+    const rounded = Math.round(scaled);
+
+    if (
+      typeof quantity !== "number" ||
+      !Number.isFinite(quantity) ||
+      quantity <= 0 ||
+      !Number.isSafeInteger(rounded) ||
+      Math.abs(scaled - rounded) > 0.000001
+    ) {
+      throw createError(`${label} contains an invalid quantity`, 409);
+    }
+
+    return rounded;
+  };
+
+  // Multiple receipt lines may reference the same product.
+  // Your bill allows each product only once, so aggregate
+  // receipt quantities by product.
+  const received = new Map();
+
+  for (const item of receipt.items) {
+    const key = String(item.productId);
+
+    const quantityMilli = toQuantityMilli(item.quantity, "Goods Receipt");
+
+    const entry = received.get(key) || {
+      quantityMilli: 0,
+      unit: item.unit,
+      productType: item.productType,
+      trackInventory: item.trackInventory,
+    };
+
+    if (
+      entry.unit !== item.unit ||
+      entry.productType !== item.productType ||
+      entry.trackInventory !== item.trackInventory
+    ) {
+      throw createError("Receipt product settings are inconsistent", 409);
+    }
+
+    const nextQuantityMilli = entry.quantityMilli + quantityMilli;
+
+    if (!Number.isSafeInteger(nextQuantityMilli)) {
+      throw createError("Receipt quantity exceeds the supported range", 409);
+    }
+
+    entry.quantityMilli = nextQuantityMilli;
+
+    received.set(key, entry);
+  }
+
+  if (received.size !== billItems.length) {
+    throw createError(
+      "This version requires billing the complete receipt",
+      409,
+    );
+  }
+
+  const seenBillProducts = new Set();
+
+  for (const item of billItems) {
+    const key = String(item.productId);
+
+    if (seenBillProducts.has(key)) {
+      throw createError("A product can appear only once in a purchase bill");
+    }
+
+    seenBillProducts.add(key);
+
+    const entry = received.get(key);
+
+    const billQuantityMilli = toQuantityMilli(item.quantity, "Purchase Bill");
+
+    if (
+      !entry ||
+      entry.quantityMilli !== billQuantityMilli ||
+      entry.unit !== item.unit ||
+      entry.productType !== item.productType ||
+      entry.trackInventory !== item.trackInventory
+    ) {
+      throw createError(
+        `Bill product, quantity, or inventory settings do not match the receipt for ${item.productName || key}`,
+        409,
+      );
+    }
+  }
+
+  return receipt._id;
+};
+
+/* ==========================================
+   CALCULATE PURCHASE BILL
+   ========================================== */
+
+const calculateBill = async ({ models, tenantId, payload, session }) => {
+  const { Supplier, Product, Ledger } = models;
+
+  const supplier = await getSupplier({
+    Supplier,
+    Ledger,
+    tenantId,
+    supplierId: payload.supplierId,
+    session,
+  });
+
+  const supplierInvoiceNumber = normalizeText(payload.supplierInvoiceNumber);
+
+  if (!supplierInvoiceNumber || supplierInvoiceNumber.length > 100) {
+    throw createError("A valid supplier invoice number is required");
+  }
+
+  const billDate = new Date(payload.billDate);
+  const dueDate = new Date(payload.dueDate);
+
+  if (
+    !payload.billDate ||
+    !payload.dueDate ||
+    Number.isNaN(billDate.getTime()) ||
+    Number.isNaN(dueDate.getTime())
+  ) {
+    throw createError("Valid billDate and dueDate are required");
+  }
+
+  if (dueDate < billDate) {
+    throw createError("Due date cannot be before bill date");
+  }
+
+  // Accept the quotation/order spelling and normalize
+  // to the values used by your PurchaseBill model.
+  const taxMode = String(payload.taxMode ?? "")
+    .trim()
+    .toUpperCase()
+    .replace(/_/g, "");
+
+  if (!["NONE", "INTRASTATE", "INTERSTATE"].includes(taxMode)) {
+    throw createError("Invalid taxMode");
+  }
+
+  if (
+    !Array.isArray(payload.items) ||
+    payload.items.length < 1 ||
+    payload.items.length > 200
+  ) {
+    throw createError("A bill requires between 1 and 200 items");
+  }
+
+  if (
+    payload.updateStock !== undefined &&
+    typeof payload.updateStock !== "boolean"
+  ) {
+    throw createError("updateStock must be a boolean");
+  }
+
+  const updateStock = payload.updateStock ?? false;
+
+  const productIds = payload.items.map((item) => {
+    validateObjectId(item.productId, "productId");
+
+    return String(item.productId).toLowerCase();
+  });
+
+  if (new Set(productIds).size !== productIds.length) {
+    throw createError("A product can appear only once in a bill");
+  }
+
+  const products = await Product.find({
+    _id: { $in: productIds },
+    tenantId,
+    status: "ACTIVE",
+    isDeleted: false,
+  })
+    .session(session)
+    .lean();
+
+  if (products.length !== productIds.length) {
+    throw createError(
+      "One or more products are missing, inactive, or belong to another tenant",
+      409,
+    );
+  }
+
+  const productMap = new Map(
+    products.map((product) => [String(product._id), product]),
+  );
+
+  const purchaseLedgerCache = new Map();
+
+  const totals = {
+    grossAmountPaise: 0,
+    discountAmountPaise: 0,
+    taxableAmountPaise: 0,
+    cgstAmountPaise: 0,
+    sgstAmountPaise: 0,
+    igstAmountPaise: 0,
+    totalAmountPaise: 0,
+  };
+
+  const items = [];
+
+  for (const input of payload.items) {
+    const product = productMap.get(String(input.productId).toLowerCase());
+
+    const quantityMilli = scaledNumber({
+      value: input.quantity,
+      scale: 1000,
+      minimum: 0.001,
+      maximum: 1000000,
+      fieldName: `Quantity for ${product.name}`,
+    });
+
+    const discountBasisPoints = scaledNumber({
+      value: input.discountPercent ?? 0,
+      scale: 100,
+      minimum: 0,
+      maximum: 100,
+      fieldName: `Discount for ${product.name}`,
+    });
+
+    if (
+      typeof input.unitRate !== "number" ||
+      !Number.isFinite(input.unitRate) ||
+      input.unitRate < 0 ||
+      input.unitRate > 1000000000
+    ) {
+      throw createError(`Invalid unit rate for ${product.name}`);
+    }
+
+    const unitRatePaise = rupeesToPaise(input.unitRate, "Unit rate");
+
+    const gstRate = input.gstRate ?? product.gstRate;
+
+    if (![0, 3, 5, 12, 18, 28].includes(gstRate)) {
+      throw createError(`Invalid GST rate for ${product.name}`);
+    }
+
+    if (taxMode === "NONE" && gstRate !== 0) {
+      throw createError(
+        `GST rate must be zero for ${product.name} when taxMode is NONE`,
+      );
+    }
+
+    const taxCreditEligible = input.taxCreditEligible ?? false;
+
+    if (typeof taxCreditEligible !== "boolean") {
+      throw createError("taxCreditEligible must be a boolean");
+    }
+
+    if (taxCreditEligible && !supplier.gstNo) {
+      throw createError(
+        "Supplier GST number is required when claiming input tax credit",
+      );
+    }
+
+    const cacheKey = product.purchaseLedgerId
+      ? String(product.purchaseLedgerId)
+      : "DEFAULT_PURCHASE";
+
+    if (!purchaseLedgerCache.has(cacheKey)) {
+      const ledger = await getPurchaseLedger({
+        Ledger,
+        tenantId,
+        ledgerId: product.purchaseLedgerId,
+        session,
+      });
+
+      purchaseLedgerCache.set(cacheKey, ledger);
+    }
+
+    const purchaseLedger = purchaseLedgerCache.get(cacheKey);
+
+    const grossAmountPaise = multiplyDivide(unitRatePaise, quantityMilli, 1000);
+
+    const discountAmountPaise = multiplyDivide(
+      grossAmountPaise,
+      discountBasisPoints,
+      10000,
+    );
+
+    const taxableAmountPaise = grossAmountPaise - discountAmountPaise;
+
+    const taxAmountPaise = multiplyDivide(taxableAmountPaise, gstRate, 100);
+
+    let cgstAmountPaise = 0;
+    let sgstAmountPaise = 0;
+    let igstAmountPaise = 0;
+
+    if (taxMode === "INTRASTATE") {
+      cgstAmountPaise = Math.floor(taxAmountPaise / 2);
+
+      sgstAmountPaise = taxAmountPaise - cgstAmountPaise;
+    } else if (taxMode === "INTERSTATE") {
+      igstAmountPaise = taxAmountPaise;
+    }
+
+    const totalAmountPaise = assertSafeAmount(
+      addAmounts(taxableAmountPaise, taxAmountPaise),
+    );
+
+    const item = {
+      productId: product._id,
+      productCode: product.productCode,
+      productName: product.name,
+      productType: product.type,
+
+      trackInventory:
+        product.type === "GOODS" ? Boolean(product.trackInventory) : false,
+
+      unit: product.unit,
+      hsnSacCode: product.hsnSacCode || null,
+
+      quantity: quantityMilli / 1000,
+      unitRatePaise,
+      discountPercent: discountBasisPoints / 100,
+
+      gstRate,
+      taxCreditEligible,
+      purchaseLedgerId: purchaseLedger._id,
+
+      grossAmountPaise,
+      discountAmountPaise,
+      taxableAmountPaise,
+      cgstAmountPaise,
+      sgstAmountPaise,
+      igstAmountPaise,
+      totalAmountPaise,
+    };
+
+    items.push(item);
+
+    for (const field of Object.keys(totals)) {
+      totals[field] = assertSafeAmount(addAmounts(totals[field], item[field]));
+    }
+  }
+
+  // Validate only AFTER all calculated bill items exist.
+  const sourceGoodsReceiptId = await validateReceiptForBill({
+    models,
+    tenantId,
+
+    payload: {
+      sourceGoodsReceiptId: payload.sourceGoodsReceiptId,
+
+      updateStock,
+    },
+
+    supplierId: supplier._id,
+    billItems: items,
+    session,
+  });
+
+  return {
+    sourceGoodsReceiptId,
+
+    supplierId: supplier._id,
+    supplierCode: supplier.supplierCode,
+    supplierName: supplier.supplierName,
+    supplierLedgerId: supplier.ledgerId,
+    supplierGstNo: supplier.gstNo || null,
+
+    supplierInvoiceNumber,
+
+    supplierInvoiceNumberNormalized: supplierInvoiceNumber.toUpperCase(),
+
+    billDate,
+    dueDate,
+    currency: "INR",
+
+    paymentTerms:
+      normalizeText(payload.paymentTerms) ||
+      supplier.paymentTerms ||
+      "Due on Receipt",
+
+    taxMode,
+    updateStock,
+
+    items,
+    ...totals,
+
+    paidAmountPaise: 0,
+
+    outstandingAmountPaise: totals.totalAmountPaise,
+
+    paymentStatus: "UNPAID",
+
+    notes: normalizeText(payload.notes) || null,
+  };
+};
+
+/* ==========================================
+   POST PURCHASE BILL
+   ========================================== */
+
 const postBillInTransaction = async ({
   models,
   tenant,
@@ -657,14 +910,44 @@ const postBillInTransaction = async ({
   ipAddress,
   session,
 }) => {
-  const { Supplier, Product, Ledger, PurchaseBill } = models;
+  const { Supplier, Product, Ledger } = models;
 
-  if (bill.status !== "DRAFT" || bill.isDeleted) {
-    throw createError("Only an active draft can be posted", 409);
+  if (!session || !session.inTransaction()) {
+    throw createError(
+      "Purchase bill posting requires an active transaction",
+      500,
+    );
   }
 
-  if (bill.totalAmountPaise <= 0) {
-    throw createError("A bill must have a positive total to be posted");
+  if (!["CREATED", "DRAFT"].includes(bill.status) || bill.isDeleted) {
+    throw createError(
+      "Only an active unposted purchase bill can be posted",
+      409,
+    );
+  }
+
+  if (
+    !Number.isSafeInteger(bill.totalAmountPaise) ||
+    bill.totalAmountPaise <= 0
+  ) {
+    throw createError(
+      "A bill must have a positive safe-integer total to be posted",
+    );
+  }
+
+  const connection = models.connection || models.PurchaseBill?.db;
+
+  if (
+    !connection ||
+    models.PurchaseBill?.db !== connection ||
+    Ledger.db !== connection ||
+    Product.db !== connection ||
+    Supplier.db !== connection
+  ) {
+    throw createError(
+      "Purchase bill models must use the same tenant connection",
+      500,
+    );
   }
 
   const oldData = bill.toObject();
@@ -679,11 +962,16 @@ const postBillInTransaction = async ({
 
   if (String(supplier.ledgerId) !== String(bill.supplierLedgerId)) {
     throw createError(
-      "Supplier ledger has changed. Update the draft before posting.",
+      "Supplier ledger has changed. Update the unposted bill before posting.",
+      409,
     );
   }
 
   const productIds = bill.items.map((item) => item.productId);
+
+  if (new Set(productIds.map(String)).size !== productIds.length) {
+    throw createError("A product can appear only once in a purchase bill");
+  }
 
   const products = await Product.find({
     _id: { $in: productIds },
@@ -695,7 +983,7 @@ const postBillInTransaction = async ({
     .lean();
 
   if (products.length !== productIds.length) {
-    throw createError("One or more bill products are no longer active");
+    throw createError("One or more bill products are no longer active", 409);
   }
 
   const productMap = new Map(
@@ -714,10 +1002,28 @@ const postBillInTransaction = async ({
       product.unit !== item.unit
     ) {
       throw createError(
-        `Product settings changed for ${item.productName}. Update the draft before posting.`,
+        `Product settings changed for ${item.productName}. Update the unposted bill before posting.`,
+        409,
       );
     }
   }
+
+  // Recheck the persisted receipt link before any
+  // journal or stock movement is created.
+  await validateReceiptForBill({
+    models,
+    tenantId,
+
+    payload: {
+      sourceGoodsReceiptId: bill.sourceGoodsReceiptId,
+
+      updateStock: bill.updateStock,
+    },
+
+    supplierId: bill.supplierId,
+    billItems: bill.items,
+    session,
+  });
 
   const lines = await buildJournalLines({
     models,
@@ -728,24 +1034,39 @@ const postBillInTransaction = async ({
 
   const journal = await postJournal({
     tenant,
-    connection: models.connection,
+    connection,
     userId,
+
     postingDate: bill.billDate,
+
     sourceType: "PURCHASE_BILL",
     sourceId: bill._id,
     sourceNumber: bill.billNumber,
+
     narration: `Purchase bill ${bill.billNumber} - ${bill.supplierName}`,
+
     lines,
     session,
   });
 
+  // Receipt-linked bills were already validated to
+  // have updateStock === false.
+  //
+  // Direct bill-and-receive requests can still
+  // increase stock using the existing behavior.
   if (bill.updateStock) {
     for (const item of bill.items) {
       if (!item.trackInventory) {
         continue;
       }
 
-      const quantityMilli = Math.round(item.quantity * 1000);
+      const quantityMilli = scaledNumber({
+        value: item.quantity,
+        scale: 1000,
+        minimum: 0.001,
+        maximum: 1000000,
+        fieldName: `Quantity for ${item.productName}`,
+      });
 
       const stockValuePaise = item.taxCreditEligible
         ? item.taxableAmountPaise
@@ -759,17 +1080,24 @@ const postBillInTransaction = async ({
 
       await stockMovementService.createStockMovement({
         tenant,
-        connection: models.connection,
+        connection,
         userId,
+
         productId: item.productId,
         movementType: "PURCHASE",
+
         quantity: item.quantity,
+
         unitRate: paiseToRupees(stockUnitRatePaise),
+
         referenceType: "PURCHASE_BILL",
         referenceId: bill._id,
         referenceNumber: bill.billNumber,
+
         movementDate: bill.billDate,
+
         notes: `Purchase bill ${bill.billNumber}`,
+
         session,
       });
     }
@@ -814,58 +1142,31 @@ const postBillInTransaction = async ({
 
   return bill;
 };
-
-const notifyBillPosted = async ({ tenantId, userId, bill }) => {
-  try {
-    await NotificationService.create({
-      tenantId,
-      userId,
-      type: "PURCHASE_BILL",
-      title: "Purchase bill posted",
-      message: `${bill.billNumber} for ${bill.supplierName} was posted successfully.`,
-      icon: "purchase-order",
-      priority: "NORMAL",
-      route: "purchaseinvoices",
-      data: {
-        purchaseBillId: bill._id.toString(),
-        billNumber: bill.billNumber,
-        supplierId: bill.supplierId.toString(),
-        totalAmountPaise: bill.totalAmountPaise,
-      },
-    });
-  } catch (error) {
-    console.error(
-      "Purchase bill notification failed:",
-      error?.message || error,
-    );
-  }
-};
-
-const translateDuplicateError = (error) => {
-  if (error?.code === 11000) {
-    return createError(
-      "Purchase bill number or supplier invoice number already exists",
-      409,
-    );
-  }
-
-  return error;
-};
-
 const createPurchaseBill = async ({ tenant, userId, payload, ipAddress }) => {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    throw createError("Purchase bill payload is required");
+  }
+
+  if (
+    payload.action !== undefined &&
+    !["SAVE_AND_POST", "SAVEANDPOST"].includes(payload.action)
+  ) {
+    throw createError(
+      "Purchase bills are automatically posted. Saving a draft is not supported.",
+    );
+  }
+
+  validateObjectId(userId, "userId");
+
   const connection = getReadyTenantConnection(tenant);
-
   const models = getTenantAccountingModels(connection);
-
   models.connection = connection;
 
   const tenantId = tenant._id;
-
   const session = await connection.startSession();
+  let result;
 
   try {
-    let result;
-
     await session.withTransaction(async () => {
       const billData = await calculateBill({
         models,
@@ -874,6 +1175,10 @@ const createPurchaseBill = async ({ tenant, userId, payload, ipAddress }) => {
         session,
       });
 
+      if (billData.totalAmountPaise <= 0) {
+        throw createError("A purchase bill must have a positive total");
+      }
+
       await ensureNoDuplicateInvoice({
         PurchaseBill: models.PurchaseBill,
         tenantId,
@@ -881,30 +1186,24 @@ const createPurchaseBill = async ({ tenant, userId, payload, ipAddress }) => {
         session,
       });
 
-      // const billNumber = await getNextSequence("PB", tenantId.toString());
       const billNumber = await getNextSequence("PB", tenantId.toString(), 3, {
         connection,
         session,
       });
 
-      const records = await models.PurchaseBill.create(
+      const [bill] = await models.PurchaseBill.create(
         [
           {
             ...billData,
             tenantId,
             billNumber,
-            status: "DRAFT",
+            status: "CREATED",
             createdBy: userId,
             updatedBy: userId,
           },
         ],
-        {
-          session,
-          ordered: true,
-        },
+        { session, ordered: true },
       );
-
-      const bill = records[0];
 
       await createAudit({
         AuditLog: models.AuditLog,
@@ -916,35 +1215,26 @@ const createPurchaseBill = async ({ tenant, userId, payload, ipAddress }) => {
         session,
       });
 
-      if (payload.action === "SAVEANDPOST") {
-        await postBillInTransaction({
-          models,
-          tenant,
-          tenantId,
-          userId,
-          bill,
-          ipAddress,
-          session,
-        });
-      }
+      await postBillInTransaction({
+        models,
+        tenant,
+        tenantId,
+        userId,
+        bill,
+        ipAddress,
+        session,
+      });
 
       result = bill.toObject();
-
-      if (result.status === "POSTED") {
-        notifyBillPosted({
-          tenantId,
-          userId,
-          bill: result,
-        });
-      }
     });
-
-    return result;
   } catch (error) {
     throw translateDuplicateError(error);
   } finally {
     await session.endSession();
   }
+
+  await notifyBillPosted({ tenantId, userId, bill: result });
+  return result;
 };
 
 const updatePurchaseBill = async ({
@@ -1018,6 +1308,8 @@ const updatePurchaseBill = async ({
 };
 
 const postPurchaseBill = async ({ tenant, userId, billNumber, ipAddress }) => {
+  validateObjectId(userId, "userId");
+
   const connection = getReadyTenantConnection(tenant);
 
   const models = getTenantAccountingModels(connection);
@@ -1028,9 +1320,9 @@ const postPurchaseBill = async ({ tenant, userId, billNumber, ipAddress }) => {
 
   const session = await connection.startSession();
 
-  try {
-    let result;
+  let result;
 
+  try {
     await session.withTransaction(async () => {
       const bill = await getDraftForUpdate({
         PurchaseBill: models.PurchaseBill,
@@ -1050,20 +1342,20 @@ const postPurchaseBill = async ({ tenant, userId, billNumber, ipAddress }) => {
       });
 
       result = bill.toObject();
-
-      notifyBillPosted({
-        tenantId,
-        userId,
-        bill: result,
-      });
     });
-
-    return result;
   } catch (error) {
     throw translateDuplicateError(error);
   } finally {
     await session.endSession();
   }
+
+  await notifyBillPosted({
+    tenantId,
+    userId,
+    bill: result,
+  });
+
+  return result;
 };
 
 const deletePurchaseBill = async ({

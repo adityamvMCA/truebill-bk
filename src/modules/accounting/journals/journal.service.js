@@ -144,7 +144,8 @@ const postJournal = async ({
     MANUAL_JOURNAL: "MJ",
     SALES_INVOICE: "SI",
     CUSTOMER_RECEIPT: "CR",
-     SALES_RETURN: "SR",
+    SALES_RETURN: "SR",
+    PURCHASE_RETURN: "PRET",
   };
 
   if (!Object.prototype.hasOwnProperty.call(sourcePrefixes, sourceType)) {

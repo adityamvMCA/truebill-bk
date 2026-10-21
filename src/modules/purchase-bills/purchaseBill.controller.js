@@ -18,10 +18,7 @@ const createPurchaseBill = async (req, res, next) => {
 
     return res.status(201).json({
       success: true,
-      message:
-        bill.status === "POSTED"
-          ? "Purchase bill created and posted successfully"
-          : "Purchase bill draft created successfully",
+      message: "Purchase bill created and posted successfully",
       bill,
     });
   } catch (error) {

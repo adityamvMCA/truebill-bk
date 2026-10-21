@@ -46,11 +46,17 @@ const FEATURE_TREE = {
     "accounting.ledgers",
     "accounting.trialBalance",
     "accounting.reports",
-    "customerOutstanding.view" 
+    "customerOutstanding.view",
   ],
 
-  gst: ["gst.summary", "gst.gstrReports", "gst.taxConfiguration", "taxConfiguration.view",
-    "taxConfiguration.update","gstrReports.view",],
+  gst: [
+    "gst.summary",
+    "gst.gstrReports",
+    "gst.taxConfiguration",
+    "taxConfiguration.view",
+    "taxConfiguration.update",
+    "gstrReports.view",
+  ],
 
   bank: [
     "bank.accounts",
@@ -59,7 +65,7 @@ const FEATURE_TREE = {
     "bank.transfers",
     "bank.reconciliation",
     "bankReconciliation.view",
-    "bankReconciliation.reconcile"
+    "bankReconciliation.reconcile",
   ],
 
   expenses: [
@@ -97,7 +103,7 @@ const FEATURE_TREE = {
     "reports.inventory",
     "reports.accounting",
     "customerOutstanding.view",
-     "supplierOutstanding.view",
+    "supplierOutstanding.view",
   ],
 
   settings: [

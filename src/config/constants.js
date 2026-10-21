@@ -28,6 +28,39 @@ const DELIVERY_NOTE_PERMISSIONS = [
   "deliveryNote.delete",
 ];
 
+const PURCHASE_REQUISITION_PERMISSIONS = [
+  "purchaseRequisition.view",
+  "purchaseRequisition.create",
+  "purchaseRequisition.update",
+  "purchaseRequisition.approve",
+  "purchaseRequisition.reject",
+  "purchaseRequisition.cancel",
+  "purchaseRequisition.delete",
+];
+const PURCHASE_RFQ_PERMISSIONS = [
+  "purchaseRfq.view",
+  "purchaseRfq.create",
+  "purchaseRfq.update",
+  "purchaseRfq.issue",
+  "purchaseRfq.close",
+  "purchaseRfq.cancel",
+  "purchaseRfq.delete",
+  "purchaseRfq.createDirect",
+];
+const SUPPLIER_QUOTATION_PERMISSIONS = [
+  "supplierQuotation.view",
+  "supplierQuotation.create",
+  "supplierQuotation.update",
+  "supplierQuotation.cancel",
+  "supplierQuotation.delete",
+  "quotationComparison.view",
+];
+const PURCHASE_ORDER_PERMISSIONS = [
+  "purchaseOrder.view",
+  "purchaseOrder.create",
+  "purchaseOrder.update",
+  "purchaseOrder.cancel",
+];
 const ROLE_PERMISSIONS = {
   admin: [
     "customer.view",
@@ -98,6 +131,16 @@ const ROLE_PERMISSIONS = {
     "customers-outstanding",
     "customerOutstanding.view",
     "supplierOutstanding.view",
+
+    ...PURCHASE_REQUISITION_PERMISSIONS,
+    ...PURCHASE_RFQ_PERMISSIONS,
+    ...SUPPLIER_QUOTATION_PERMISSIONS,
+    ...PURCHASE_ORDER_PERMISSIONS,
+    "goodsReceipt.view",
+    "goodsReceipt.create",
+    "purchaseReturn.view",
+    "purchaseReturn.create",
+    "purchaseReturn.post",
   ],
 
   accountant: [
@@ -160,6 +203,8 @@ const ROLE_PERMISSIONS = {
     "ledger.view",
     "salesOrder.view",
     "salesOrder.create",
+    "purchaseRequisition.view",
+    "purchaseRequisition.create",
   ],
 
   purchase: [

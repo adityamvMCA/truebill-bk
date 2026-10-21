@@ -49,6 +49,10 @@ const MOVEMENT_RULES = {
     direction: "OUT",
     referenceType: "DELIVERY_NOTE",
   },
+  GOODS_RECEIPT: {
+    direction: "IN",
+    referenceType: "GOODS_RECEIPT",
+  },
 };
 
 const normalizeText = (value) => String(value || "").trim();

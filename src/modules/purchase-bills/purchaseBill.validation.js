@@ -45,7 +45,7 @@ const itemSchema = Joi.object({
 
 const editableFields = {
   supplierId: objectId.required(),
-
+  sourceGoodsReceiptId: objectId,
   supplierInvoiceNumber: Joi.string().trim().max(100).required(),
 
   billDate: Joi.date().iso().required(),
@@ -56,7 +56,11 @@ const editableFields = {
 
   paymentTerms: Joi.string().trim().max(100).default("Due on Receipt"),
 
-  taxMode: Joi.string().valid("NONE", "INTRA_STATE", "INTER_STATE").required(),
+  // taxMode: Joi.string().valid("NONE", "INTRA_STATE", "INTER_STATE").required(),
+  taxMode: Joi.string()
+    .valid("NONE", "INTRASTATE", "INTERSTATE", "INTRA_STATE", "INTER_STATE")
+    .required()
+    .custom((value) => value.replace(/_/g, "")),
 
   updateStock: Joi.boolean().strict().default(false),
 
@@ -81,9 +85,11 @@ const editableFields = {
 const createPurchaseBillSchema = Joi.object({
   ...editableFields,
 
+  // Optional for compatibility with existing clients.
+  // The service always posts new bills.
   action: Joi.string()
-    .valid("SAVE_DRAFT", "SAVE_AND_POST")
-    .default("SAVE_DRAFT"),
+    .valid("SAVE_AND_POST", "SAVEANDPOST")
+    .default("SAVE_AND_POST"),
 }).unknown(false);
 
 // Full draft replacement, not a partial PATCH.
@@ -103,7 +109,8 @@ const listPurchaseBillsSchema = Joi.object({
 
   supplierId: objectId,
 
-  status: Joi.string().valid("DRAFT", "POSTED", "CANCELLED"),
+  // status: Joi.string().valid("DRAFT", "POSTED", "CANCELLED"),
+  status: Joi.string().valid("CREATED", "POSTED", "CANCELLED", "DRAFT"),
 
   paymentStatus: Joi.string().valid("UNPAID", "PARTIALLY_PAID", "PAID"),
 

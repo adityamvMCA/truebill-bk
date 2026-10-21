@@ -11,6 +11,7 @@ const MOVEMENT_TYPES = [
   "ADJUSTMENT_OUT",
   "TRANSFER_IN",
   "TRANSFER_OUT",
+  "GOODS_RECEIPT",
 ];
 const DIRECTIONS = ["IN", "OUT"];
 
@@ -103,6 +104,7 @@ const stockMovementSchema = new mongoose.Schema(
         "PURCHASE_RETURN",
         "STOCK_ADJUSTMENT",
         "STOCK_TRANSFER",
+        "GOODS_RECEIPT",
         null,
       ],
       default: null,
