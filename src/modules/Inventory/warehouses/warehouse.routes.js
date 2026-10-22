@@ -7,12 +7,17 @@ const resolveTenant = require("../../../middleware/tenantMiddleware");
 const requirePermission = require("../../../middleware/permissionMiddleware");
 
 const controller = require("./warehouse.controller");
-
 const validation = require("./warehouse.validation");
 
 const router = express.Router();
 
 router.use(verifyToken, resolveTenant);
+
+router.post(
+  "/setup",
+  requirePermission("warehouse.setup"),
+  controller.setupWarehouses,
+);
 
 router.get(
   "/settings",
@@ -48,5 +53,9 @@ router.patch(
   validation.validateUpdate,
   controller.updateWarehouse,
 );
-
+router.post(
+  "/initialize-stock",
+  requirePermission("warehouse.initialize"),
+  controller.initializeStock,
+);
 module.exports = router;

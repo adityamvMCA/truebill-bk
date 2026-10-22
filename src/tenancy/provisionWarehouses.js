@@ -1,79 +1,224 @@
-const { getReadyTenantConnection } = require("./tenantConnectionManager");
-
-const { getTenantAccountingModels } = require("./tenantAccountingModels");
+const mongoose = require("mongoose");
 
 const {
-  seedDefaultWarehouse,
-} = require("../modules/warehouses/warehouse.seed");
+  getTenantAccountingModels,
+} = require("./tenantAccountingModels");
 
-const ensureCollection = async (connection, model) => {
-  const collectionName = model.collection.name;
+const DEFAULT_WAREHOUSE_CODE = "MAIN";
 
-  const existing = await connection.db
-    .listCollections(
-      {
-        name: collectionName,
-      },
-      {
-        nameOnly: true,
-      },
-    )
-    .toArray();
+const WAREHOUSE_COLLECTION = "warehouses";
 
-  if (existing.length === 0) {
-    try {
-      await model.createCollection();
-    } catch (error) {
-      if (error.code !== 48 && error.codeName !== "NamespaceExists") {
-        throw error;
-      }
-    }
+const INVENTORY_SETTINGS_COLLECTION =
+  "inventorysettings";
+
+const WAREHOUSE_STOCK_COLLECTION =
+  "warehousestocks";
+
+const ensureConnection = (connection) => {
+  if (
+    !connection ||
+    typeof connection.model !== "function" ||
+    !connection.models
+  ) {
+    throw new Error(
+      "A valid Mongoose connection is required",
+    );
   }
 
-  await model.createIndexes();
+  if (connection.readyState !== 1) {
+    throw new Error(
+      "The database connection is not ready",
+    );
+  }
 };
 
-const provisionWarehousesForTenant = async ({ tenant, userId = null }) => {
-  const connection = getReadyTenantConnection(tenant);
+const ensureCollection = async (
+  connection,
+  collectionName,
+) => {
+  const db = connection.db;
 
-  const models = getTenantAccountingModels(connection);
+  const exists = await db
+    .listCollections({
+      name: collectionName,
+    })
+    .hasNext();
 
-  if (tenant.databaseName && connection.name !== tenant.databaseName) {
-    throw new Error("Invalid tenant database target");
+  if (exists) {
+    return;
   }
 
-  for (const name of ["Warehouse", "InventorySettings", "WarehouseStock"]) {
-    const model = models[name];
+  await db.createCollection(
+    collectionName,
+  );
+};
 
-    if (!model || model.db !== connection) {
-      throw new Error(`Invalid tenant model: ${name}`);
+const ensureIndexes = async (models) => {
+  await models.Warehouse.createIndexes();
+
+  await models.InventorySettings.createIndexes();
+
+  await models.WarehouseStock.createIndexes();
+};
+
+const provisionWarehousesForTenant =
+  async ({
+    tenant,
+    userId,
+    connection,
+  }) => {
+    if (
+      !tenant ||
+      typeof tenant !== "object" ||
+      !tenant._id
+    ) {
+      throw new Error(
+        "A valid tenant context is required",
+      );
     }
 
-    await ensureCollection(connection, model);
-  }
+    if (
+      !userId ||
+      typeof userId !== "string"
+    ) {
+      throw new Error(
+        "A valid authenticated user ID is required",
+      );
+    }
 
-  const session = await connection.startSession();
+    ensureConnection(connection);
 
-  try {
+    const models =
+      getTenantAccountingModels(
+        connection,
+      );
+
+    await ensureCollection(
+      connection,
+      WAREHOUSE_COLLECTION,
+    );
+
+    await ensureCollection(
+      connection,
+      INVENTORY_SETTINGS_COLLECTION,
+    );
+
+    await ensureCollection(
+      connection,
+      WAREHOUSE_STOCK_COLLECTION,
+    );
+
+    await ensureIndexes(models);
+
+    const session =
+      await connection.startSession();
+
     let result;
 
-    await session.withTransaction(async () => {
-      result = await seedDefaultWarehouse({
-        models,
-        tenantId: tenant._id,
-        userId,
-        session,
-      });
-    });
+    try {
+      await session.withTransaction(
+        async () => {
+          const existingSettings =
+            await models.InventorySettings.findOne(
+              {
+                tenantId: tenant._id,
+              },
+              null,
+              {
+                session,
+              },
+            );
 
-    return {
-      databaseName: connection.name,
-      ...result,
-    };
-  } finally {
-    await session.endSession();
-  }
-};
+          if (existingSettings) {
+            result = {
+              alreadyProvisioned: true,
+              settings: existingSettings,
+            };
+
+            return;
+          }
+
+          const existingMain =
+            await models.Warehouse.findOne(
+              {
+                tenantId: tenant._id,
+                warehouseCode:
+                  DEFAULT_WAREHOUSE_CODE,
+              },
+              null,
+              {
+                session,
+              },
+            );
+
+          if (existingMain) {
+            throw new Error(
+              "Warehouse setup is incomplete: MAIN exists but InventorySettings is missing",
+            );
+          }
+
+          const now = new Date();
+
+          const [mainWarehouse] =
+            await models.Warehouse.create(
+              [
+                {
+                  tenantId: tenant._id,
+                  warehouseCode:
+                    DEFAULT_WAREHOUSE_CODE,
+                  name: "Main Location",
+                  description:
+                    "System-created default inventory location",
+                  address: null,
+                  status: "ACTIVE",
+                  isSystem: true,
+                  createdBy: userId,
+                  updatedBy: userId,
+                },
+              ],
+              {
+                session,
+              },
+            );
+
+          const [settings] =
+            await models.InventorySettings.create(
+              [
+                {
+                  tenantId: tenant._id,
+                  defaultWarehouseId:
+                    mainWarehouse._id,
+                  multiWarehouseEnabled:
+                    false,
+                  warehouseTrackingStatus:
+                    "NOT_INITIALIZED",
+                  warehouseTrackingStartedAt:
+                    null,
+                  createdBy: userId,
+                  updatedBy: userId,
+                },
+              ],
+              {
+                session,
+              },
+            );
+
+          result = {
+            alreadyProvisioned: false,
+            warehouse: mainWarehouse,
+            settings,
+          };
+        },
+        {
+          session,
+        },
+      );
+    } finally {
+      await session.endSession();
+    }
+
+    return result;
+  };
 
 module.exports = {
   provisionWarehousesForTenant,

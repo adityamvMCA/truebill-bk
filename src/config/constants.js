@@ -202,6 +202,7 @@ const ROLE_PERMISSIONS = {
     "warehouse.view",
     "warehouse.create",
     "warehouse.update",
+    "warehouse.initialize"
   ],
 
   sales: [

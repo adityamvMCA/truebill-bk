@@ -194,40 +194,82 @@ const audit = async (context, warehouse, action, oldData = null) => {
     },
   );
 };
+const generateWarehouseCode = async (context) => {
+  const counters = context.connection.db.collection("counters");
 
+  const counterId = `${String(context.tenantId)}:WAREHOUSE`;
+
+  while (true) {
+    await counters.updateOne(
+      {
+        _id: counterId,
+      },
+      {
+        $inc: {
+          seq: 1,
+        },
+      },
+      {
+        upsert: true,
+        session: context.session,
+      },
+    );
+
+    const counter = await counters.findOne(
+      {
+        _id: counterId,
+      },
+      {
+        session: context.session,
+      },
+    );
+
+    if (!Number.isSafeInteger(counter?.seq) || counter.seq < 1) {
+      throw createError("Invalid warehouse sequence", 500);
+    }
+
+    const warehouseCode = `WH${String(counter.seq).padStart(3, "0")}`;
+
+    if (warehouseCode.length > 20) {
+      throw createError(
+        "Warehouse sequence exceeds the supported code length",
+        409,
+      );
+    }
+
+    const exists = await context.models.Warehouse.exists({
+      tenantId: context.tenantId,
+      warehouseCode,
+    }).session(context.session);
+
+    if (!exists) {
+      return warehouseCode;
+    }
+  }
+};
 const createWarehouse = (args) =>
   transaction(args, async (context) => {
     const payload = args.payload;
 
-    validatePayload(payload, [
-      "warehouseCode",
-      "name",
-      "address",
-      "description",
-    ]);
+    validatePayload(payload, ["name", "address", "description"]);
 
     await loadSettings(context);
 
-    const warehouseCode = normalizeCode(payload.warehouseCode);
-
-    if (!/^[A-Z][A-Z0-9_]{0,19}$/.test(warehouseCode)) {
-      throw createError("Invalid warehouse code");
-    }
-
-    if (warehouseCode === "MAIN") {
-      throw createError("MAIN is reserved for the default location");
-    }
-
     const fields = buildFields(payload, true);
+
+    const warehouseCode = await generateWarehouseCode(context);
 
     const [warehouse] = await context.models.Warehouse.create(
       [
         {
           ...fields,
+
           tenantId: context.tenantId,
           warehouseCode,
+
           status: "ACTIVE",
           isSystem: false,
+
           createdBy: context.userId,
           updatedBy: context.userId,
         },

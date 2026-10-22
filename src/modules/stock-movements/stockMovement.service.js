@@ -850,9 +850,248 @@ const backfillOpeningStock = async (args) =>
     return result;
   });
 
+const initializeWarehouseStock = async (args) => {
+  if (args.confirm !== true) {
+    throw createError(
+      "Explicit confirmation is required to initialize warehouse stock.",
+    );
+  }
+
+  return runTransaction(args, async (context) => {
+    const { models, tenantId, userId, session } = context;
+
+    const settings = await lockInventorySettings(context);
+
+    const defaultWarehouseId = objectId(
+      settings.defaultWarehouseId,
+      "defaultWarehouseId",
+    );
+
+    const warehouse = await models.Warehouse.findOneAndUpdate(
+      {
+        _id: defaultWarehouseId,
+        tenantId,
+        status: "ACTIVE",
+      },
+      {
+        $inc: {
+          __v: 1,
+        },
+      },
+      {
+        new: true,
+        session,
+        timestamps: false,
+      },
+    ).lean();
+
+    if (!warehouse) {
+      throw createError("The default warehouse is missing or inactive.", 409);
+    }
+
+    if (settings.warehouseTrackingStatus === "READY") {
+      return {
+        alreadyInitialized: true,
+        warehouse: {
+          _id: warehouse._id,
+          warehouseCode: warehouse.warehouseCode,
+          name: warehouse.name,
+        },
+        warehouseTrackingStatus: "READY",
+        warehouseTrackingStartedAt: settings.warehouseTrackingStartedAt,
+        multiWarehouseEnabled: settings.multiWarehouseEnabled,
+      };
+    }
+
+    if (settings.multiWarehouseEnabled) {
+      throw createError(
+        "Disable multi-warehouse mode before initialization.",
+        409,
+      );
+    }
+
+    const existingBalance = await models.WarehouseStock.exists({
+      tenantId,
+    }).session(session);
+
+    if (existingBalance) {
+      throw createError(
+        "Warehouse balances already exist while tracking is not initialized. Reconcile these records before initializing; existing balances will not be overwritten.",
+        409,
+      );
+    }
+
+    const MAX_PRODUCTS = 1000;
+
+    const products = await models.Product.find({
+      tenantId,
+    })
+      .select("_id productCode type trackInventory currentStock isDeleted")
+      .sort({
+        _id: 1,
+      })
+      .limit(MAX_PRODUCTS + 1)
+      .session(session)
+      .lean();
+
+    if (products.length > MAX_PRODUCTS) {
+      throw createError(
+        `This initialization endpoint supports up to ${MAX_PRODUCTS} products per tenant. Use a dedicated maintenance migration for larger inventories.`,
+        409,
+      );
+    }
+
+    const balances = [];
+
+    let positiveStockProducts = 0;
+    let zeroStockProducts = 0;
+    let skippedProducts = 0;
+
+    for (const product of products) {
+      const productLabel = product.productCode || String(product._id);
+
+      const stockInteger = balanceMilli(
+        product.currentStock ?? 0,
+        `Current stock for ${productLabel}`,
+      );
+
+      const eligible =
+        product.type === "GOODS" &&
+        product.trackInventory === true &&
+        product.isDeleted !== true;
+
+      if (!eligible) {
+        if (stockInteger !== 0) {
+          throw createError(
+            `Product ${productLabel} has stock but is deleted or is not an inventory-tracked Goods product. Reconcile it before initialization.`,
+            409,
+          );
+        }
+
+        skippedProducts += 1;
+        continue;
+      }
+
+      balances.push({
+        tenantId,
+        warehouseId: defaultWarehouseId,
+        productId: product._id,
+        currentStock: stockInteger / 1000,
+      });
+
+      if (stockInteger > 0) {
+        positiveStockProducts += 1;
+      } else {
+        zeroStockProducts += 1;
+      }
+    }
+
+    const BATCH_SIZE = 100;
+
+    for (let index = 0; index < balances.length; index += BATCH_SIZE) {
+      await models.WarehouseStock.create(
+        balances.slice(index, index + BATCH_SIZE),
+        {
+          session,
+          ordered: true,
+        },
+      );
+    }
+
+    const createdCount = await models.WarehouseStock.countDocuments({
+      tenantId,
+    }).session(session);
+
+    if (createdCount !== balances.length) {
+      throw createError(
+        "Warehouse stock initialization verification failed.",
+        409,
+      );
+    }
+
+    const settingsDocument = await models.InventorySettings.findOne({
+      _id: settings._id,
+      tenantId,
+    }).session(session);
+
+    if (!settingsDocument) {
+      throw createError(
+        "Inventory settings disappeared during initialization.",
+        409,
+      );
+    }
+
+    const startedAt = new Date();
+
+    settingsDocument.warehouseTrackingStatus = "READY";
+
+    settingsDocument.warehouseTrackingStartedAt = startedAt;
+
+    settingsDocument.multiWarehouseEnabled = false;
+
+    settingsDocument.updatedBy = userId;
+
+    await settingsDocument.save({
+      session,
+    });
+
+    const summary = {
+      warehouseId: defaultWarehouseId,
+      warehouseCode: warehouse.warehouseCode,
+      productsScanned: products.length,
+      initializedProducts: balances.length,
+      positiveStockProducts,
+      zeroStockProducts,
+      skippedProducts,
+      warehouseTrackingStatus: "READY",
+      warehouseTrackingStartedAt: startedAt,
+      multiWarehouseEnabled: false,
+    };
+
+    await models.AuditLog.create(
+      [
+        {
+          tenantId,
+          userId,
+          action: "WAREHOUSE_STOCK_INITIALIZATION",
+          module: "WAREHOUSE",
+          documentId: warehouse._id,
+
+          oldData: {
+            warehouseTrackingStatus: settings.warehouseTrackingStatus,
+
+            warehouseTrackingStartedAt: settings.warehouseTrackingStartedAt,
+
+            multiWarehouseEnabled: settings.multiWarehouseEnabled,
+          },
+
+          newData: summary,
+          ipAddress: context.ipAddress,
+        },
+      ],
+      {
+        session,
+      },
+    );
+
+    return {
+      alreadyInitialized: false,
+
+      warehouse: {
+        _id: warehouse._id,
+        warehouseCode: warehouse.warehouseCode,
+        name: warehouse.name,
+      },
+
+      ...summary,
+    };
+  });
+};
+
 module.exports = {
   createStockMovement,
   getStockMovements,
   createManualAdjustment,
   backfillOpeningStock,
+  initializeWarehouseStock,
 };

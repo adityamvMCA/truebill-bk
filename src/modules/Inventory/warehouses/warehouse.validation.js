@@ -15,9 +15,6 @@ const optionalText = (maximum) =>
   Joi.string().trim().max(maximum).allow(null, "");
 
 const createSchema = Joi.object({
-  warehouseCode: warehouseCode.invalid("MAIN").required().messages({
-    "any.invalid": "MAIN is reserved for the default location",
-  }),
 
   name: name.required(),
 
