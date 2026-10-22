@@ -143,6 +143,23 @@ const stockMovementSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+    warehouseId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Warehouse",
+      default: null,
+    },
+
+    aggregateStockBefore: {
+      type: Number,
+      min: 0,
+      default: null,
+    },
+
+    aggregateStockAfter: {
+      type: Number,
+      min: 0,
+      default: null,
+    },
   },
   {
     timestamps: true,
@@ -161,7 +178,13 @@ stockMovementSchema.index({
   movementType: 1,
   movementDate: -1,
 });
-
+stockMovementSchema.index({
+  tenantId: 1,
+  warehouseId: 1,
+  productId: 1,
+  movementDate: -1,
+  _id: -1,
+});
 stockMovementSchema.index(
   {
     tenantId: 1,

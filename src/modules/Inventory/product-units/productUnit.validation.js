@@ -45,13 +45,25 @@ const paramsSchema = Joi.object({
 }).unknown(false);
 
 const listSchema = Joi.object({
-  search: Joi.string().trim().max(100).allow("").default(""),
+  search: Joi.string()
+    .trim()
+    .max(100)
+    .allow("")
+    .default(""),
 
   status,
 
-  page: Joi.number().integer().min(1).max(100000).strict().default(1),
+  page: Joi.number()
+    .integer()
+    .min(1)
+    .max(100000)
+    .default(1),
 
-  limit: Joi.number().integer().min(1).max(100).strict().default(20),
+  limit: Joi.number()
+    .integer()
+    .min(1)
+    .max(100)
+    .default(20),
 }).unknown(false);
 
 const validate =

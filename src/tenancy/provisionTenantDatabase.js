@@ -39,6 +39,9 @@ const MODEL_NAMES = [
   "HsnSacCode",
   "TaxRate",
   "StockAdjustment",
+  "Warehouse",
+  "InventorySettings",
+  "WarehouseStock",
 ];
 
 const provisionTenantDatabase = async ({ tenant, userId = null }) => {

@@ -199,6 +199,9 @@ const ROLE_PERMISSIONS = {
     "tax.update",
     "stock.adjustment.view",
     "stock.adjustment.create",
+    "warehouse.view",
+    "warehouse.create",
+    "warehouse.update",
   ],
 
   sales: [

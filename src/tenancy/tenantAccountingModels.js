@@ -123,9 +123,12 @@ const LegacyProductUnit = require("../modules/Inventory/product-units/productUni
 const LegacyProductBrand = require("../modules/Inventory/product-brands/productBrand.model");
 const LegacyHsnSacCode = require("../modules/Inventory/hsn-sac-codes/hsnSacCode.model");
 const LegacyTaxRate = require("../modules/tax-rates/taxRate.model");
-const LegacyStockAdjustment = require(
-  "../modules/Inventory/stock-adjustments/stockAdjustment.model",
+const LegacyStockAdjustment = require("../modules/Inventory/stock-adjustments/stockAdjustment.model");
+const LegacyWarehouse = require("../modules/Inventory/warehouses/warehouse.model");
+const LegacyWarehouseStock = require(
+  "../modules/Inventory/warehouse-stock/warehouseStock.model",
 );
+const LegacyInventorySettings = require("../modules/Inventory/warehouses/inventorySettings.model");
 const getTenantAccountingModels = (connection) => {
   assertConnection(connection);
 
@@ -162,6 +165,9 @@ const getTenantAccountingModels = (connection) => {
     HsnSacCode: LegacyHsnSacCode,
     TaxRate: LegacyTaxRate,
     StockAdjustment: LegacyStockAdjustment,
+    Warehouse: LegacyWarehouse,
+    InventorySettings: LegacyInventorySettings,
+    WarehouseStock: LegacyWarehouseStock,
   };
 
   const models = {};
