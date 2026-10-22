@@ -1,3 +1,5 @@
+const mongoose = require("mongoose");
+
 const {
   getTenantAccountingModels,
 } = require("../../tenancy/tenantAccountingModels");
@@ -5,6 +7,14 @@ const {
 const {
   getReadyTenantConnection,
 } = require("../../tenancy/tenantConnectionManager");
+
+const { resolveProductBrand } = require("../../utils/resolveProductBrand");
+
+const { resolveProductUnit } = require("../../utils/resolveProductUnit");
+
+const { resolveHsnSacCode } = require("../../utils/resolveHsnSacCode");
+
+const { resolveTaxRate } = require("../../utils/resolveTaxRate");
 
 const { getNextSequence } = require("../../utils/sequenceGenerator");
 
@@ -15,116 +25,488 @@ const {
   runCsvImport,
 } = require("../../utils/csvImport");
 
+const PRODUCT_TYPES = ["GOODS", "SERVICE"];
+
+const PRODUCT_STATUS = ["ACTIVE", "INACTIVE"];
+
+const EDITABLE_FIELDS = [
+  "name",
+  "type",
+  "category",
+  "brand",
+  "description",
+  "unit",
+  "hsnSacCode",
+  "gstRate",
+  "salePrice",
+  "purchasePrice",
+  "trackInventory",
+  "reorderLevel",
+  "status",
+];
+
+const hasOwn = (object, field) =>
+  Object.prototype.hasOwnProperty.call(object, field);
+
+const createError = (message, statusCode = 400) => {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  return error;
+};
+
 const normalizeProductCode = (productCode) =>
-  String(productCode || "")
+  String(productCode ?? "")
     .trim()
     .toUpperCase();
 
 const cleanNullableText = (value) => {
   const text = normalizeText(value);
-
   return text || null;
 };
 
-const roundQuantity = (value) => Math.round((Number(value) || 0) * 1000) / 1000;
+const normalizeCategoryName = (value) =>
+  String(value ?? "")
+    .trim()
+    .replace(/\s+/g, " ");
 
-const roundAmount = (value) => Math.round((Number(value) || 0) * 100) / 100;
+const roundQuantity = (value) => Math.round(Number(value) * 1000) / 1000;
 
-const createProduct = async ({ tenant, userId, payload, ipAddress }) => {
+const roundAmount = (value) => Math.round(Number(value) * 100) / 100;
+
+const validateObjectId = (value, label) => {
+  if (!mongoose.isObjectIdOrHexString(value)) {
+    throw createError(`${label} must be a valid ObjectId`);
+  }
+};
+
+const validateScaledNumber = ({ value, label, scale, maximum }) => {
+  if (
+    typeof value !== "number" ||
+    !Number.isFinite(value) ||
+    value < 0 ||
+    value > maximum
+  ) {
+    throw createError(`${label} must be between 0 and ${maximum}`);
+  }
+
+  const scaled = value * scale;
+  const rounded = Math.round(scaled);
+
+  if (!Number.isSafeInteger(rounded) || Math.abs(scaled - rounded) > 0.000001) {
+    throw createError(`${label} has too many decimal places`);
+  }
+
+  return rounded / scale;
+};
+
+const resolveContext = (tenant) => {
   const connection = getReadyTenantConnection(tenant);
 
-  const { Product, StockMovement, AuditLog } =
-    getTenantAccountingModels(connection);
+  const models = getTenantAccountingModels(connection);
 
-  const tenantId = tenant._id;
+  for (const name of ["Product", "StockMovement", "AuditLog"]) {
+    if (!models[name] || models[name].db !== connection) {
+      throw createError(`Invalid tenant model: ${name}`, 500);
+    }
+  }
 
-  const session = await connection.startSession();
+  validateObjectId(tenant._id, "tenantId");
+
+  return {
+    connection,
+    models,
+    tenantId: tenant._id,
+  };
+};
+
+const runTransaction = async ({ tenant, userId }, operation) => {
+  const context = resolveContext(tenant);
+
+  validateObjectId(userId, "userId");
+
+  const session = await context.connection.startSession();
 
   try {
-    let createdProduct;
+    let result;
 
     await session.withTransaction(async () => {
-      const productCode = await getNextSequence("PR", tenantId.toString(), 3, {
-        connection,
+      result = await operation({
+        ...context,
+        userId,
         session,
       });
+    });
 
-      const productType = String(payload.type || "GOODS")
-        .trim()
-        .toUpperCase();
+    return result;
+  } catch (error) {
+    if (error.code === 11000) {
+      throw createError("Product name or product code already exists", 409);
+    }
+
+    if (error.name === "VersionError") {
+      throw createError("Product changed. Reload before continuing.", 409);
+    }
+
+    throw error;
+  } finally {
+    await session.endSession();
+  }
+};
+
+const createAudit = async ({
+  context,
+  product,
+  action,
+  oldData = null,
+  ipAddress,
+}) => {
+  await context.models.AuditLog.create(
+    [
+      {
+        tenantId: context.tenantId,
+        userId: context.userId,
+        action,
+        module: "PRODUCT",
+        documentId: product._id,
+        oldData,
+        newData: product.toObject(),
+        ipAddress,
+      },
+    ],
+    {
+      session: context.session,
+    },
+  );
+};
+
+const resolveProductCategory = async ({
+  models,
+  tenantId,
+  value,
+  session,
+  existingCategory = null,
+  preserveExisting = false,
+}) => {
+  const name = normalizeCategoryName(value);
+
+  if (!name) {
+    return null;
+  }
+
+  if (name.length > 100) {
+    throw createError("Category cannot exceed 100 characters");
+  }
+
+  const existingName = normalizeCategoryName(existingCategory);
+
+  if (
+    preserveExisting &&
+    existingName &&
+    name.toLowerCase() === existingName.toLowerCase()
+  ) {
+    return existingCategory;
+  }
+
+  const { ProductCategory, Product } = models;
+
+  if (!ProductCategory || ProductCategory.db !== Product.db) {
+    throw createError(
+      "ProductCategory is not registered on the product tenant connection",
+      500,
+    );
+  }
+
+  const category = await ProductCategory.findOne({
+    tenantId,
+    normalizedName: name.toLowerCase(),
+  })
+    .session(session)
+    .lean();
+
+  if (!category) {
+    throw createError(
+      `Category "${name}" does not exist. Create it in Inventory Categories first.`,
+      409,
+    );
+  }
+
+  if (category.status !== "ACTIVE") {
+    throw createError(`Category "${category.name}" is inactive`, 409);
+  }
+
+  const locked = await ProductCategory.updateOne(
+    {
+      _id: category._id,
+      tenantId,
+      status: "ACTIVE",
+      __v: category.__v,
+    },
+    {
+      $inc: {
+        __v: 1,
+      },
+    },
+    {
+      session,
+      timestamps: false,
+    },
+  );
+
+  if (locked.modifiedCount !== 1) {
+    throw createError(
+      "Category changed. Reload the categories and try again.",
+      409,
+    );
+  }
+
+  return category.name;
+};
+
+const buildProductFields = (payload, creating = false) => {
+  const fields = {};
+
+  if (creating || hasOwn(payload, "name")) {
+    const name = normalizeText(payload.name);
+
+    if (!name || name.length < 2 || name.length > 200) {
+      throw createError("Product name must contain 2–200 characters");
+    }
+
+    fields.name = name;
+  }
+
+  if (creating || hasOwn(payload, "type")) {
+    const type = String(payload.type ?? "GOODS")
+      .trim()
+      .toUpperCase();
+
+    if (!PRODUCT_TYPES.includes(type)) {
+      throw createError("Product type must be GOODS or SERVICE");
+    }
+
+    fields.type = type;
+  }
+
+  if (creating || hasOwn(payload, "unit")) {
+    fields.unit = String(payload.unit ?? "NOS")
+      .trim()
+      .toUpperCase();
+  }
+
+  if (creating || hasOwn(payload, "status")) {
+    const status = String(payload.status ?? "ACTIVE")
+      .trim()
+      .toUpperCase();
+
+    if (!PRODUCT_STATUS.includes(status)) {
+      throw createError("Status must be ACTIVE or INACTIVE");
+    }
+
+    fields.status = status;
+  }
+
+  for (const [field, maximum] of [
+    ["brand", 100],
+    ["description", 1000],
+  ]) {
+    if (creating || hasOwn(payload, field)) {
+      const value = cleanNullableText(payload[field]);
+
+      if (value && value.length > maximum) {
+        throw createError(`${field} cannot exceed ${maximum} characters`);
+      }
+
+      fields[field] = value;
+    }
+  }
+
+  if (creating || hasOwn(payload, "hsnSacCode")) {
+    const value = cleanNullableText(
+      String(payload.hsnSacCode ?? "").toUpperCase(),
+    );
+
+    if (value && value.length > 20) {
+      throw createError("HSN/SAC code cannot exceed 20 characters");
+    }
+
+    fields.hsnSacCode = value;
+  }
+
+  if (creating || hasOwn(payload, "gstRate")) {
+    const gstRate = payload.gstRate ?? 18;
+
+    if (
+      typeof gstRate !== "number" ||
+      !Number.isFinite(gstRate) ||
+      gstRate < 0 ||
+      gstRate > 100
+    ) {
+      throw createError("GST rate must be between 0 and 100");
+    }
+
+    fields.gstRate = gstRate;
+  }
+
+  for (const field of ["salePrice", "purchasePrice"]) {
+    if (creating || hasOwn(payload, field)) {
+      fields[field] = validateScaledNumber({
+        value: payload[field] ?? 0,
+
+        label: field,
+        scale: 100,
+        maximum: 1000000000,
+      });
+    }
+  }
+
+  if (creating || hasOwn(payload, "trackInventory")) {
+    const trackInventory =
+      payload.trackInventory ?? (fields.type === "SERVICE" ? false : true);
+
+    if (typeof trackInventory !== "boolean") {
+      throw createError("trackInventory must be a boolean");
+    }
+
+    fields.trackInventory = trackInventory;
+  }
+
+  if (creating || hasOwn(payload, "reorderLevel")) {
+    fields.reorderLevel = validateScaledNumber({
+      value: payload.reorderLevel ?? 0,
+
+      label: "Reorder level",
+      scale: 1000,
+      maximum: 1000000,
+    });
+  }
+
+  if (creating) {
+    fields.openingStock = validateScaledNumber({
+      value: payload.openingStock ?? 0,
+
+      label: "Opening stock",
+      scale: 1000,
+      maximum: 1000000,
+    });
+
+    fields.openingStockRate = validateScaledNumber({
+      value: payload.openingStockRate ?? 0,
+
+      label: "Opening stock rate",
+      scale: 100,
+      maximum: 1000000000,
+    });
+  }
+
+  return fields;
+};
+
+const createProduct = async ({ tenant, userId, payload, ipAddress }) =>
+  runTransaction(
+    {
+      tenant,
+      userId,
+    },
+    async (context) => {
+      if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+        throw createError("Product payload is required");
+      }
+
+      const { Product, StockMovement } = context.models;
+
+      const fields = buildProductFields(payload, true);
+
+      const category = await resolveProductCategory({
+        models: context.models,
+        tenantId: context.tenantId,
+        value: payload.category,
+        session: context.session,
+      });
+
+      fields.brand = await resolveProductBrand({
+        models: context.models,
+        tenantId: context.tenantId,
+        value: fields.brand,
+        session: context.session,
+      });
+
+      fields.unit = await resolveProductUnit({
+        models: context.models,
+        tenantId: context.tenantId,
+        value: fields.unit,
+        session: context.session,
+      });
+
+      fields.hsnSacCode = await resolveHsnSacCode({
+        models: context.models,
+        tenantId: context.tenantId,
+        value: fields.hsnSacCode,
+        session: context.session,
+      });
+
+      fields.gstRate = await resolveTaxRate({
+        models: context.models,
+        tenantId: context.tenantId,
+        value: fields.gstRate,
+        session: context.session,
+      });
+
+      const productType = fields.type;
 
       const trackInventory =
-        productType === "GOODS" ? Boolean(payload.trackInventory) : false;
+        productType === "GOODS" ? fields.trackInventory : false;
 
-      const openingStock = trackInventory
-        ? roundQuantity(payload.openingStock)
-        : 0;
+      const openingStock = trackInventory ? fields.openingStock : 0;
 
-      const openingStockRate = trackInventory
-        ? roundAmount(payload.openingStockRate)
-        : 0;
+      const openingStockRate = trackInventory ? fields.openingStockRate : 0;
 
-      const productRecords = await Product.create(
-        [
-          {
-            ...payload,
+      const reorderLevel = trackInventory ? fields.reorderLevel : 0;
 
-            productCode,
-            tenantId,
-
-            name: normalizeText(payload.name),
-
-            type: productType,
-
-            unit: String(payload.unit || "NOS")
-              .trim()
-              .toUpperCase(),
-
-            trackInventory,
-
-            category: cleanNullableText(payload.category),
-
-            brand: cleanNullableText(payload.brand),
-
-            description: cleanNullableText(payload.description),
-
-            hsnSacCode: cleanNullableText(payload.hsnSacCode),
-
-            gstRate: Number(payload.gstRate) || 0,
-
-            salePrice: roundAmount(payload.salePrice),
-
-            purchasePrice: roundAmount(payload.purchasePrice),
-
-            openingStock,
-
-            openingStockRate,
-
-            reorderLevel: trackInventory
-              ? roundQuantity(payload.reorderLevel)
-              : 0,
-
-            currentStock: 0,
-
-            status: String(payload.status || "ACTIVE")
-              .trim()
-              .toUpperCase(),
-          },
-        ],
+      const productCode = await getNextSequence(
+        "PR",
+        String(context.tenantId),
+        3,
         {
-          session,
+          connection: context.connection,
+
+          session: context.session,
         },
       );
 
-      const product = productRecords[0];
+      const [product] = await Product.create(
+        [
+          {
+            ...fields,
+            tenantId: context.tenantId,
+
+            productCode,
+            category,
+            trackInventory,
+            openingStock,
+            openingStockRate,
+            reorderLevel,
+            currentStock: 0,
+          },
+        ],
+        {
+          session: context.session,
+        },
+      );
 
       if (trackInventory && openingStock > 0) {
         const totalValue = roundAmount(openingStock * openingStockRate);
 
+        if (
+          !Number.isFinite(totalValue) ||
+          !Number.isSafeInteger(Math.round(totalValue * 100))
+        ) {
+          throw createError("Opening stock value exceeds the supported range");
+        }
+
         await StockMovement.create(
           [
             {
-              tenantId,
+              tenantId: context.tenantId,
 
               productId: product._id,
 
@@ -154,52 +536,31 @@ const createProduct = async ({ tenant, userId, payload, ipAddress }) => {
 
               notes: "Opening stock at product creation",
 
-              createdBy: userId,
+              createdBy: context.userId,
             },
           ],
           {
-            session,
+            session: context.session,
           },
         );
 
         product.currentStock = openingStock;
 
         await product.save({
-          session,
+          session: context.session,
         });
       }
 
-      await AuditLog.create(
-        [
-          {
-            tenantId,
+      await createAudit({
+        context,
+        product,
+        action: "CREATE",
+        ipAddress,
+      });
 
-            userId,
-
-            action: "CREATE",
-
-            module: "PRODUCT",
-
-            documentId: product._id,
-
-            newData: product.toObject(),
-
-            ipAddress,
-          },
-        ],
-        {
-          session,
-        },
-      );
-
-      createdProduct = product;
-    });
-
-    return createdProduct;
-  } finally {
-    await session.endSession();
-  }
-};
+      return product;
+    },
+  );
 
 const importProducts = async ({ tenant, userId, buffer, ipAddress }) => {
   getReadyTenantConnection(tenant);
@@ -262,19 +623,11 @@ const importProducts = async ({ tenant, userId, buffer, ipAddress }) => {
 
     processRow: async (payload) => {
       if (!payload.name) {
-        const error = new Error("Product name is required");
-
-        error.statusCode = 400;
-
-        throw error;
+        throw createError("Product name is required");
       }
 
       if (payload.type === "SERVICE" && payload.trackInventory) {
-        const error = new Error("Services cannot track inventory");
-
-        error.statusCode = 400;
-
-        throw error;
+        throw createError("Services cannot track inventory");
       }
 
       return createProduct({
@@ -297,15 +650,19 @@ const getProducts = async ({
   page = 1,
   limit = 20,
 }) => {
-  const connection = getReadyTenantConnection(tenant);
+  const { models, tenantId } = resolveContext(tenant);
 
-  const { Product } = getTenantAccountingModels(connection);
+  const { Product } = models;
 
-  const tenantId = tenant._id;
+  const currentPage = Math.max(Math.floor(Number(page) || 1), 1);
 
-  const currentPage = Math.max(Number(page) || 1, 1);
+  const pageLimit = Math.min(Math.max(Math.floor(Number(limit) || 20), 1), 100);
 
-  const pageLimit = Math.min(Math.max(Number(limit) || 20, 1), 100);
+  const skip = (currentPage - 1) * pageLimit;
+
+  if (!Number.isSafeInteger(skip)) {
+    throw createError("Pagination offset exceeds the supported range");
+  }
 
   const filter = {
     tenantId,
@@ -313,59 +670,56 @@ const getProducts = async ({
   };
 
   if (status) {
-    filter.status = String(status).trim().toUpperCase();
+    const normalizedStatus = String(status).trim().toUpperCase();
+
+    if (!PRODUCT_STATUS.includes(normalizedStatus)) {
+      throw createError("Invalid product status");
+    }
+
+    filter.status = normalizedStatus;
   }
 
   if (type) {
-    filter.type = String(type).trim().toUpperCase();
+    const normalizedType = String(type).trim().toUpperCase();
+
+    if (!PRODUCT_TYPES.includes(normalizedType)) {
+      throw createError("Invalid product type");
+    }
+
+    filter.type = normalizedType;
   }
 
   if (category) {
-    filter.category = String(category).trim();
+    filter.category = normalizeCategoryName(category);
   }
 
-  if (trackInventory !== undefined) {
-    filter.trackInventory = String(trackInventory).toLowerCase() === "true";
+  if (
+    trackInventory !== undefined &&
+    trackInventory !== null &&
+    trackInventory !== ""
+  ) {
+    const value = String(trackInventory).trim().toLowerCase();
+
+    if (!["true", "false"].includes(value)) {
+      throw createError("trackInventory must be true or false");
+    }
+
+    filter.trackInventory = value === "true";
   }
 
   const searchText = normalizeText(search);
 
   if (searchText) {
+    const escaped = searchText.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+    const regex = new RegExp(escaped, "i");
+
     filter.$or = [
-      {
-        name: {
-          $regex: searchText,
-          $options: "i",
-        },
-      },
-
-      {
-        productCode: {
-          $regex: searchText,
-          $options: "i",
-        },
-      },
-
-      {
-        hsnSacCode: {
-          $regex: searchText,
-          $options: "i",
-        },
-      },
-
-      {
-        category: {
-          $regex: searchText,
-          $options: "i",
-        },
-      },
-
-      {
-        brand: {
-          $regex: searchText,
-          $options: "i",
-        },
-      },
+      { name: regex },
+      { productCode: regex },
+      { hsnSacCode: regex },
+      { category: regex },
+      { brand: regex },
     ];
   }
 
@@ -373,8 +727,9 @@ const getProducts = async ({
     Product.find(filter)
       .sort({
         createdAt: -1,
+        _id: -1,
       })
-      .skip((currentPage - 1) * pageLimit)
+      .skip(skip)
       .limit(pageLimit)
       .lean(),
 
@@ -386,9 +741,7 @@ const getProducts = async ({
 
     pagination: {
       page: currentPage,
-
       limit: pageLimit,
-
       total,
 
       totalPages: Math.ceil(total / pageLimit),
@@ -397,17 +750,17 @@ const getProducts = async ({
 };
 
 const getProductByCode = async ({ tenant, productCode }) => {
-  const connection = getReadyTenantConnection(tenant);
+  const { models, tenantId } = resolveContext(tenant);
 
-  const { Product } = getTenantAccountingModels(connection);
+  const normalizedCode = normalizeProductCode(productCode);
 
-  const tenantId = tenant._id;
+  if (!normalizedCode || ["UNDEFINED", "NULL"].includes(normalizedCode)) {
+    throw createError("A valid product code is required");
+  }
 
-  return Product.findOne({
+  return models.Product.findOne({
     tenantId,
-
-    productCode: normalizeProductCode(productCode),
-
+    productCode: normalizedCode,
     isDeleted: false,
   });
 };
@@ -418,143 +771,213 @@ const updateProduct = async ({
   productCode,
   payload,
   ipAddress,
-}) => {
-  const connection = getReadyTenantConnection(tenant);
+}) =>
+  runTransaction(
+    {
+      tenant,
+      userId,
+    },
+    async (context) => {
+      const { Product, StockMovement } = context.models;
 
-  const { Product, AuditLog } = getTenantAccountingModels(connection);
+      const product = await Product.findOne({
+        tenantId: context.tenantId,
 
-  const tenantId = tenant._id;
+        productCode: normalizeProductCode(productCode),
 
-  const product = await Product.findOne({
-    tenantId,
+        isDeleted: false,
+      }).session(context.session);
 
-    productCode: normalizeProductCode(productCode),
+      if (!product) {
+        throw createError("Product not found", 404);
+      }
 
-    isDeleted: false,
-  });
+      const input = payload || {};
 
-  if (!product) {
-    const error = new Error("Product not found");
+      if (!EDITABLE_FIELDS.some((field) => hasOwn(input, field))) {
+        throw createError("Provide at least one editable product field");
+      }
 
-    error.statusCode = 404;
+      const oldData = product.toObject();
 
-    throw error;
-  }
+      const updates = buildProductFields(input);
 
-  const oldData = product.toObject();
+      if (hasOwn(input, "category")) {
+        updates.category = await resolveProductCategory({
+          models: context.models,
 
-  const protectedFields = [
-    "_id",
-    "tenantId",
-    "productCode",
-    "currentStock",
-    "openingStock",
-    "openingStockRate",
-    "salesLedgerId",
-    "purchaseLedgerId",
-    "inventoryLedgerId",
-    "isDeleted",
-    "deletedAt",
-    "deletedBy",
-    "createdAt",
-    "updatedAt",
-    "__v",
-  ];
+          tenantId: context.tenantId,
 
-  for (const [key, value] of Object.entries(payload || {})) {
-    if (!protectedFields.includes(key)) {
-      product[key] = value;
-    }
-  }
+          value: input.category,
 
-  if (product.type === "SERVICE") {
-    product.trackInventory = false;
+          session: context.session,
 
-    product.openingStock = 0;
+          existingCategory: product.category,
 
-    product.openingStockRate = 0;
+          preserveExisting: true,
+        });
+      }
 
-    product.reorderLevel = 0;
-  }
+      if (hasOwn(input, "brand")) {
+        updates.brand = await resolveProductBrand({
+          models: context.models,
 
-  await product.save();
+          tenantId: context.tenantId,
 
-  await AuditLog.create({
-    tenantId,
+          value: input.brand,
 
-    userId,
+          session: context.session,
 
-    action: "UPDATE",
+          existingBrand: product.brand,
 
-    module: "PRODUCT",
+          preserveExisting: true,
+        });
+      }
 
-    documentId: product._id,
+      if (hasOwn(input, "unit")) {
+        updates.unit = await resolveProductUnit({
+          models: context.models,
 
-    oldData,
+          tenantId: context.tenantId,
 
-    newData: product.toObject(),
+          value: input.unit,
 
-    ipAddress,
-  });
+          session: context.session,
 
-  return product;
-};
+          existingUnit: product.unit,
 
-const deleteProduct = async ({ tenant, userId, productCode, ipAddress }) => {
-  const connection = getReadyTenantConnection(tenant);
+          preserveExisting: true,
+        });
+      }
 
-  const { Product, AuditLog } = getTenantAccountingModels(connection);
+      if (hasOwn(input, "hsnSacCode")) {
+        updates.hsnSacCode = await resolveHsnSacCode({
+          models: context.models,
 
-  const tenantId = tenant._id;
+          tenantId: context.tenantId,
 
-  const product = await Product.findOne({
-    tenantId,
+          value: input.hsnSacCode,
 
-    productCode: normalizeProductCode(productCode),
+          session: context.session,
 
-    isDeleted: false,
-  });
+          existingCode: product.hsnSacCode,
 
-  if (!product) {
-    const error = new Error("Product not found");
+          preserveExisting: true,
+        });
+      }
 
-    error.statusCode = 404;
+      if (hasOwn(input, "gstRate")) {
+        updates.gstRate = await resolveTaxRate({
+          models: context.models,
 
-    throw error;
-  }
+          tenantId: context.tenantId,
 
-  const oldData = product.toObject();
+          value: input.gstRate,
 
-  product.isDeleted = true;
+          session: context.session,
 
-  product.deletedAt = new Date();
+          existingRate: product.gstRate,
 
-  product.deletedBy = userId;
+          preserveExisting: true,
+        });
+      }
 
-  product.status = "INACTIVE";
+      const nextType = updates.type ?? product.type;
 
-  await product.save();
+      const nextUnit = updates.unit ?? product.unit;
 
-  await AuditLog.create({
-    tenantId,
+      const nextTrackInventory =
+        nextType === "SERVICE"
+          ? false
+          : (updates.trackInventory ?? product.trackInventory);
 
-    userId,
+      const stockStructureChanged =
+        nextType !== product.type ||
+        nextUnit !== product.unit ||
+        nextTrackInventory !== product.trackInventory;
 
-    action: "DELETE",
+      if (stockStructureChanged) {
+        const hasMovements = await StockMovement.exists({
+          tenantId: context.tenantId,
 
-    module: "PRODUCT",
+          productId: product._id,
+        }).session(context.session);
 
-    documentId: product._id,
+        if (hasMovements || Number(product.currentStock) !== 0) {
+          throw createError(
+            "Product type, unit, and inventory tracking cannot be changed after stock activity",
+            409,
+          );
+        }
+      }
 
-    oldData,
+      updates.trackInventory = nextTrackInventory;
 
-    newData: product.toObject(),
+      product.set(updates);
 
-    ipAddress,
-  });
+      if (product.type === "SERVICE") {
+        product.trackInventory = false;
 
-  return product;
-};
+        product.reorderLevel = 0;
+      }
+
+      await product.save({
+        session: context.session,
+      });
+
+      await createAudit({
+        context,
+        product,
+        action: "UPDATE",
+        oldData,
+        ipAddress,
+      });
+
+      return product;
+    },
+  );
+
+const deleteProduct = async ({ tenant, userId, productCode, ipAddress }) =>
+  runTransaction(
+    {
+      tenant,
+      userId,
+    },
+    async (context) => {
+      const product = await context.models.Product.findOne({
+        tenantId: context.tenantId,
+
+        productCode: normalizeProductCode(productCode),
+
+        isDeleted: false,
+      }).session(context.session);
+
+      if (!product) {
+        throw createError("Product not found", 404);
+      }
+
+      const oldData = product.toObject();
+
+      product.isDeleted = true;
+      product.deletedAt = new Date();
+      product.deletedBy = context.userId;
+      product.status = "INACTIVE";
+
+      await product.save({
+        session: context.session,
+      });
+
+      await createAudit({
+        context,
+        product,
+        action: "DELETE",
+        oldData,
+        ipAddress,
+      });
+
+      return product;
+    },
+  );
 
 module.exports = {
   createProduct,

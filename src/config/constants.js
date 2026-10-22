@@ -141,6 +141,18 @@ const ROLE_PERMISSIONS = {
     "purchaseReturn.view",
     "purchaseReturn.create",
     "purchaseReturn.post",
+    "category.view",
+    "category.create",
+    "category.update",
+    "brand.view",
+    "brand.create",
+    "brand.update",
+    "hsn.view",
+    "hsn.create",
+    "hsn.update",
+    "tax.view",
+    "tax.create",
+    "tax.update",
   ],
 
   accountant: [
@@ -182,6 +194,11 @@ const ROLE_PERMISSIONS = {
     "customers-outstanding",
     "customerOutstanding.view",
     "supplierOutstanding.view",
+    "tax.view",
+    "tax.create",
+    "tax.update",
+    "stock.adjustment.view",
+    "stock.adjustment.create",
   ],
 
   sales: [

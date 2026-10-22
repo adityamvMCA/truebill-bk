@@ -118,6 +118,14 @@ const assertAccountingModels = (models) => {
   };
 };
 const LegacyPurchaseReturn = require("../modules/purchase-returns/purchaseReturn.model");
+const LegacyProductCategory = require("../modules/Inventory/product-categories/productCategory.model");
+const LegacyProductUnit = require("../modules/Inventory/product-units/productUnit.model");
+const LegacyProductBrand = require("../modules/Inventory/product-brands/productBrand.model");
+const LegacyHsnSacCode = require("../modules/Inventory/hsn-sac-codes/hsnSacCode.model");
+const LegacyTaxRate = require("../modules/tax-rates/taxRate.model");
+const LegacyStockAdjustment = require(
+  "../modules/Inventory/stock-adjustments/stockAdjustment.model",
+);
 const getTenantAccountingModels = (connection) => {
   assertConnection(connection);
 
@@ -148,6 +156,12 @@ const getTenantAccountingModels = (connection) => {
     PurchaseOrder: LegacyPurchaseOrder,
     GoodsReceipt: LegacyGoodsReceipt,
     PurchaseReturn: LegacyPurchaseReturn,
+    ProductCategory: LegacyProductCategory,
+    ProductUnit: LegacyProductUnit,
+    ProductBrand: LegacyProductBrand,
+    HsnSacCode: LegacyHsnSacCode,
+    TaxRate: LegacyTaxRate,
+    StockAdjustment: LegacyStockAdjustment,
   };
 
   const models = {};

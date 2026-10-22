@@ -33,6 +33,12 @@ const MODEL_NAMES = [
   "PurchaseOrder",
   "GoodsReceipt",
   "PurchaseReturn",
+  "ProductCategory",
+  "ProductUnit",
+  "ProductBrand",
+  "HsnSacCode",
+  "TaxRate",
+  "StockAdjustment",
 ];
 
 const provisionTenantDatabase = async ({ tenant, userId = null }) => {

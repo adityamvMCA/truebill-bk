@@ -1,35 +1,20 @@
 const Joi = require("joi");
 
-const PRODUCT_TYPES = ["GOODS", "SERVICE"];
-
-const PRODUCT_STATUS = ["ACTIVE", "INACTIVE"];
-
-const UNITS = [
-  "NOS",
-  "PCS",
-  "BOX",
-  "BAG",
-  "PACK",
-  "SET",
-  "KG",
-  "GRAM",
-  "TON",
-  "LITRE",
-  "ML",
-  "METER",
-  "FEET",
-  "SQFT",
-  "SQM",
-  "HOUR",
-  "DAY",
-  "MONTH",
+const PRODUCT_TYPES = [
+  "GOODS",
+  "SERVICE",
 ];
 
-const GST_RATES = [0, 3, 5, 12, 18, 28];
+const PRODUCT_STATUS = [
+  "ACTIVE",
+  "INACTIVE",
+];
 
-const optionalText = Joi.string()
-  .trim()
-  .allow("", null);
+const optionalText = (maxLength) =>
+  Joi.string()
+    .trim()
+    .max(maxLength)
+    .allow("", null);
 
 const productFields = {
   name: Joi.string()
@@ -37,176 +22,235 @@ const productFields = {
     .min(2)
     .max(200)
     .messages({
-      "string.empty": "Product name is required",
-      "string.min": "Product name must contain at least 2 characters",
-      "string.max": "Product name cannot exceed 200 characters",
+      "string.empty":
+        "Product name is required",
+
+      "string.min":
+        "Product name must contain at least 2 characters",
+
+      "string.max":
+        "Product name cannot exceed 200 characters",
     }),
 
   type: Joi.string()
+    .trim()
     .uppercase()
     .valid(...PRODUCT_TYPES)
-    .default("GOODS")
     .messages({
-      "any.only": "Product type must be GOODS or SERVICE",
+      "any.only":
+        "Product type must be GOODS or SERVICE",
     }),
 
-  category: Joi.string()
-    .trim()
-    .max(100)
-    .allow("", null)
-    .messages({
-      "string.max": "Category cannot exceed 100 characters",
-    }),
+  category: optionalText(100),
 
-  brand: Joi.string()
-    .trim()
-    .max(100)
-    .allow("", null)
-    .messages({
-      "string.max": "Brand cannot exceed 100 characters",
-    }),
+  brand: optionalText(100),
 
-  description: Joi.string()
-    .trim()
-    .max(1000)
-    .allow("", null)
-    .messages({
-      "string.max": "Description cannot exceed 1000 characters",
-    }),
+  description: optionalText(1000),
 
   unit: Joi.string()
+    .trim()
     .uppercase()
-    .valid(...UNITS)
-    .default("NOS")
+    .pattern(/^[A-Z][A-Z0-9_]{0,19}$/)
     .messages({
-      "any.only": `Unit must be one of: ${UNITS.join(", ")}`,
+      "string.pattern.base":
+        "Unit must be a valid unit code containing up to 20 letters, numbers, or underscores",
     }),
 
   hsnSacCode: Joi.string()
     .trim()
     .uppercase()
-    .max(20)
+    .pattern(/^[A-Z0-9]{2,20}$/)
     .allow("", null)
     .messages({
-      "string.max": "HSN/SAC code cannot exceed 20 characters",
+      "string.pattern.base":
+        "HSN/SAC code must contain 2–20 letters or numbers",
     }),
 
   gstRate: Joi.number()
-    .valid(...GST_RATES)
-    .default(18)
+    .min(0)
+    .max(100)
+    .strict()
     .messages({
-      "any.only": `GST rate must be one of: ${GST_RATES.join(", ")}`,
+      "number.min":
+        "GST rate must be between 0 and 100",
+
+      "number.max":
+        "GST rate must be between 0 and 100",
     }),
 
   salePrice: Joi.number()
     .min(0)
-    .precision(2)
-    .default(0)
-    .messages({
-      "number.min": "Sale price cannot be negative",
-    }),
+    .max(1000000000)
+    .precision(2),
 
   purchasePrice: Joi.number()
     .min(0)
-    .precision(2)
-    .default(0)
-    .messages({
-      "number.min": "Purchase price cannot be negative",
-    }),
+    .max(1000000000)
+    .precision(2),
 
-  trackInventory: Joi.boolean()
-    .default(true),
+  trackInventory: Joi.boolean(),
 
   openingStock: Joi.number()
     .min(0)
-    .precision(3)
-    .default(0)
-    .messages({
-      "number.min": "Opening stock cannot be negative",
-    }),
+    .max(1000000)
+    .precision(3),
 
   openingStockRate: Joi.number()
     .min(0)
-    .precision(2)
-    .default(0)
-    .messages({
-      "number.min": "Opening stock rate cannot be negative",
-    }),
+    .max(1000000000)
+    .precision(2),
 
   reorderLevel: Joi.number()
     .min(0)
-    .precision(3)
-    .default(0)
-    .messages({
-      "number.min": "Reorder level cannot be negative",
-    }),
+    .max(1000000)
+    .precision(3),
 
   status: Joi.string()
+    .trim()
     .uppercase()
     .valid(...PRODUCT_STATUS)
-    .default("ACTIVE")
     .messages({
-      "any.only": "Status must be ACTIVE or INACTIVE",
+      "any.only":
+        "Status must be ACTIVE or INACTIVE",
     }),
+};
+
+const validateProductType = (
+  value,
+  helpers,
+) => {
+  if (
+    value.type === "SERVICE" &&
+    value.trackInventory === true
+  ) {
+    return helpers.error(
+      "any.custom",
+      {
+        message:
+          "Services cannot track inventory",
+      },
+    );
+  }
+
+  return value;
 };
 
 const createProductSchema = Joi.object({
   ...productFields,
 
-  name: productFields.name.required().messages({
-    "any.required": "Product name is required",
-    "string.empty": "Product name is required",
-  }),
-}).custom((value, helpers) => {
-  if (value.type === "SERVICE" && value.trackInventory) {
-    return helpers.error("any.custom", {
-      message: "Services cannot track inventory",
-    });
-  }
+  name: productFields.name
+    .required()
+    .messages({
+      "any.required":
+        "Product name is required",
+    }),
 
-  return value;
-}, "Product type validation").messages({
-  "any.custom": "{{#message}}",
-});
+  type: productFields.type
+    .default("GOODS"),
 
-const updateProductSchema = Joi.object(productFields)
-  .min(1)
-  .custom((value, helpers) => {
-    if (value.type === "SERVICE" && value.trackInventory) {
-      return helpers.error("any.custom", {
-        message: "Services cannot track inventory",
-      });
-    }
+  unit: productFields.unit
+    .default("NOS"),
 
-    return value;
-  }, "Product type validation")
+  gstRate: productFields.gstRate
+    .default(18),
+
+  salePrice: productFields.salePrice
+    .default(0),
+
+  purchasePrice:
+    productFields.purchasePrice
+      .default(0),
+
+  trackInventory:
+    productFields.trackInventory
+      .when("type", {
+        is: "SERVICE",
+
+        then: Joi.boolean()
+          .valid(false)
+          .default(false),
+
+        otherwise: Joi.boolean()
+          .default(true),
+      }),
+
+  openingStock:
+    productFields.openingStock
+      .default(0),
+
+  openingStockRate:
+    productFields.openingStockRate
+      .default(0),
+
+  reorderLevel:
+    productFields.reorderLevel
+      .default(0),
+
+  status: productFields.status
+    .default("ACTIVE"),
+})
+  .custom(
+    validateProductType,
+    "Product type validation",
+  )
   .messages({
-    "object.min": "Provide at least one field to update",
-    "any.custom": "{{#message}}",
+    "any.custom":
+      "{{#message}}",
   });
 
-const validateProduct = (schema) => {
-  return (req, res, next) => {
-    const { error, value } = schema.validate(req.body, {
-      abortEarly: false,
-      stripUnknown: true,
-      convert: true,
-    });
+const updateProductSchema = Joi.object({
+  ...productFields,
+})
+  .min(1)
+  .custom(
+    validateProductType,
+    "Product type validation",
+  )
+  .messages({
+    "object.min":
+      "Provide at least one field to update",
+
+    "any.custom":
+      "{{#message}}",
+  });
+
+const validateProduct = (schema) =>
+  (req, res, next) => {
+    const { error, value } =
+      schema.validate(
+        req.body ?? {},
+        {
+          abortEarly: false,
+          stripUnknown: true,
+          convert: true,
+        },
+      );
 
     if (error) {
       return res.status(400).json({
         success: false,
         message: "Validation failed",
-        errors: error.details.map((detail) => detail.message),
+
+        errors: error.details.map(
+          (detail) =>
+            detail.message,
+        ),
       });
     }
 
     req.body = value;
-    next();
+
+    return next();
   };
-};
 
 module.exports = {
-  validateCreateProduct: validateProduct(createProductSchema),
-  validateUpdateProduct: validateProduct(updateProductSchema),
+  validateCreateProduct:
+    validateProduct(
+      createProductSchema,
+    ),
+
+  validateUpdateProduct:
+    validateProduct(
+      updateProductSchema,
+    ),
 };

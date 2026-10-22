@@ -14,19 +14,34 @@ const {
   validateUpdateProduct,
 } = require("./product.validation");
 
-const verifyToken = require("../../middleware/authMiddleware");
+const verifyToken = require(
+  "../../middleware/authMiddleware",
+);
 
-const resolveTenant = require("../../middleware/tenantMiddleware");
+const resolveTenant = require(
+  "../../middleware/tenantMiddleware",
+);
 
-const requirePermission = require("../../middleware/permissionMiddleware");
+const requirePermission = require(
+  "../../middleware/permissionMiddleware",
+);
 
-const upload = require("../../middleware/csvUploadMiddleware");
+const upload = require(
+  "../../middleware/csvUploadMiddleware",
+);
 
 const router = express.Router();
 
-router.use(verifyToken, resolveTenant);
+router.use(
+  verifyToken,
+  resolveTenant,
+);
 
-router.get("/", requirePermission("product.view"), getProducts);
+router.get(
+  "/",
+  requirePermission("product.view"),
+  getProducts,
+);
 
 router.post(
   "/",

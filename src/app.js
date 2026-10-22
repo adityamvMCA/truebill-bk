@@ -41,13 +41,17 @@ const purchaseRfqRoutes = require("./modules/purchase-rfqs/purchaseRfq.routes");
 const supplierQuotationRoutes = require("./modules/supplier-quotations/supplierQuotation.routes");
 const quotationComparisonRoutes = require("./modules/quotation-comparison/quotationComparison.routes");
 const purchaseOrderRoutes = require("./modules/purchase-orders/purchaseOrder.routes");
-const goodsReceiptRoutes = require(
-  "./modules/goods-receipts/goodsReceipt.routes",
-);
-const purchaseReturnRoutes = require(
-  "./modules/purchase-returns/purchaseReturn.routes",
-);
+const goodsReceiptRoutes = require("./modules/goods-receipts/goodsReceipt.routes");
+const purchaseReturnRoutes = require("./modules/purchase-returns/purchaseReturn.routes");
+const productCategoryRoutes = require("./modules/Inventory/product-categories/productCategory.routes");
+const productUnitRoutes = require("./modules/Inventory/product-units/productUnit.routes");
+const productBrandRoutes = require("./modules/Inventory/product-brands/productBrand.routes");
+const taxRateRoutes = require("./modules/tax-rates/taxRate.routes");
+const stockAdjustmentRoutes = require("./modules/Inventory/stock-adjustments/stockAdjustment.routes");
+const stockAlertRoutes = require("./modules/Inventory/stock-alerts/stockAlert.routes");
+const stockValuationRoutes = require("./modules/Inventory/stock-valuation/stockValuation.routes");
 const app = express();
+const hsnSacCodeRoutes = require("./modules/Inventory/hsn-sac-codes/hsnSacCode.routes");
 
 app.set("trust proxy", 1);
 
@@ -160,6 +164,14 @@ app.use("/api/quotation-comparison", quotationComparisonRoutes);
 app.use("/api/purchase-orders", purchaseOrderRoutes);
 app.use("/api/goods-receipts", goodsReceiptRoutes);
 app.use("/api/purchase-returns", purchaseReturnRoutes);
+app.use("/api/product-categories", productCategoryRoutes);
+app.use("/api/product-units", productUnitRoutes);
+app.use("/api/product-brands", productBrandRoutes);
+app.use("/api/hsn-sac-codes", hsnSacCodeRoutes);
+app.use("/api/tax-rates", taxRateRoutes);
+app.use("/api/stock-adjustments", stockAdjustmentRoutes);
+app.use("/api/stock-alerts", stockAlertRoutes);
+app.use("/api/stock-valuation", stockValuationRoutes);
 app.use(express.json({ limit: "5mb" }));
 app.use((req, res) =>
   res.status(404).json({
