@@ -116,7 +116,14 @@ const listSchema = Joi.object({
 
   creationMode: Joi.string().valid("DIRECT", "REQUISITION"),
 
-  status: Joi.string().valid("CREATED", "ISSUED", "CLOSED", "CANCELLED"),
+  status: Joi.string().valid(
+    "CREATED",
+    "APPROVED",
+    "REJECTED",
+    "ISSUED",
+    "CLOSED",
+    "CANCELLED",
+  ),
 
   supplierId: objectId,
 
@@ -131,6 +138,16 @@ const cancelSchema = Joi.object({
   version: versionValue.required(),
 
   cancellationReason: Joi.string().trim().min(1).max(1000).required(),
+}).unknown(false);
+
+const rejectSchema = Joi.object({
+  version: versionValue.required(),
+
+  rejectionReason: Joi.string()
+    .trim()
+    .min(1)
+    .max(1000)
+    .required(),
 }).unknown(false);
 
 /* ==========================================
@@ -171,4 +188,5 @@ module.exports = {
   validateList: validate(listSchema, "query"),
   validateVersion: validate(versionSchema),
   validateCancel: validate(cancelSchema),
+  validateReject: validate(rejectSchema),
 };

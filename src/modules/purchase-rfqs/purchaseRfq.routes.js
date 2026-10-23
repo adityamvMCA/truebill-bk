@@ -1,16 +1,10 @@
 const express = require("express");
 
-const verifyToken = require(
-  "../../middleware/authMiddleware",
-);
+const verifyToken = require("../../middleware/authMiddleware");
 
-const resolveTenant = require(
-  "../../middleware/tenantMiddleware",
-);
+const resolveTenant = require("../../middleware/tenantMiddleware");
 
-const requirePermission = require(
-  "../../middleware/permissionMiddleware",
-);
+const requirePermission = require("../../middleware/permissionMiddleware");
 
 const controller = require("./purchaseRfq.controller");
 const validation = require("./purchaseRfq.validation");
@@ -23,19 +17,11 @@ router.use(verifyToken, resolveTenant);
    MODE-SPECIFIC CREATE PERMISSION
    ========================================== */
 
-const requireDirectCreate = requirePermission(
-  "purchaseRfq.createDirect",
-);
+const requireDirectCreate = requirePermission("purchaseRfq.createDirect");
 
-const requireRequisitionView = requirePermission(
-  "purchaseRequisition.view",
-);
+const requireRequisitionView = requirePermission("purchaseRequisition.view");
 
-const requireCreationModePermission = (
-  req,
-  res,
-  next,
-) => {
+const requireCreationModePermission = (req, res, next) => {
   if (req.validatedBody.creationMode === "DIRECT") {
     return requireDirectCreate(req, res, next);
   }
@@ -107,6 +93,22 @@ router.delete(
   validation.validateParams,
   validation.validateVersion,
   controller.deleteRfq,
+);
+
+router.post(
+  "/:rfqNumber/approve",
+  requirePermission("purchaseRfq.approve"),
+  validation.validateParams,
+  validation.validateVersion,
+  controller.approveRfq,
+);
+
+router.post(
+  "/:rfqNumber/reject",
+  requirePermission("purchaseRfq.reject"),
+  validation.validateParams,
+  validation.validateReject,
+  controller.rejectRfq,
 );
 
 module.exports = router;
