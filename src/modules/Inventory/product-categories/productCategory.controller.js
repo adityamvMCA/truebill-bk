@@ -1,94 +1,46 @@
 const service = require("./productCategory.service");
 const { importProductCategories } = require("./productCategory.import");
-
-const importCategories = async (req, res, next) => {
-  try {
-    const result = await importProductCategories({
-      tenant: req.tenant,
-      userId: req.user.userId,
-      buffer: req.file?.buffer,
-      ipAddress: req.ip,
-    });
-
-    return res.status(200).json({
-      success: true,
-      message: "Product categories imported successfully",
-      ...result,
-    });
-  } catch (error) {
-    return next(error);
-  }
-};
-const getContext = (req) => ({
+const context = (req) => ({
   tenant: req.tenant,
   userId: req.user.userId,
   ipAddress: req.ip,
   categoryCode: req.validatedParams?.categoryCode,
   payload: req.validatedBody,
 });
-
-const createCategory = async (req, res, next) => {
+const write = (method, message, status = 200) => async (req, res, next) => {
   try {
-    const data = await service.createCategory(getContext(req));
-
-    return res.status(201).json({
-      success: true,
-      message: "Product category created successfully",
-      data,
-    });
-  } catch (error) {
-    return next(error);
-  }
+    const data = await service[method](context(req));
+    return res.status(status).json({ success: true, message, data });
+  } catch (error) { return next(error); }
 };
-
 const listCategories = async (req, res, next) => {
   try {
-    const result = await service.listCategories({
-      ...req.validatedQuery,
-      tenant: req.tenant,
-    });
-
-    return res.status(200).json({
-      success: true,
-      data: result.data,
-      pagination: result.pagination,
-    });
-  } catch (error) {
-    return next(error);
-  }
+    const result = await service.listCategories({ ...req.validatedQuery, tenant: req.tenant });
+    return res.json({ success: true, ...result });
+  } catch (error) { return next(error); }
 };
-
 const getCategory = async (req, res, next) => {
-  try {
-    const data = await service.getCategory(getContext(req));
-
-    return res.status(200).json({
-      success: true,
-      data,
-    });
-  } catch (error) {
-    return next(error);
-  }
+  try { return res.json({ success: true, data: await service.getCategory(context(req)) }); }
+  catch (error) { return next(error); }
 };
-
-const updateCategory = async (req, res, next) => {
+const importCategories = async (req, res, next) => {
   try {
-    const data = await service.updateCategory(getContext(req));
-
-    return res.status(200).json({
-      success: true,
-      message: "Product category updated successfully",
-      data,
+    const result = await importProductCategories({ ...context(req), buffer: req.file?.buffer });
+    return res.json({
+      success: !result.requiresVerification,
+      message: result.message || "Import completed; check row results",
+      ...result,
     });
-  } catch (error) {
-    return next(error);
-  }
+  } catch (error) { return next(error); }
 };
-
+const seedDefaults = async (req, res, next) => {
+  try {
+    const data = await service.seedDefaults({ ...context(req), confirm: req.validatedBody.confirm });
+    return res.json({ success: true, message: "Tenant defaults seeded without overwriting existing values", data });
+  } catch (error) { return next(error); }
+};
 module.exports = {
-  createCategory,
-  listCategories,
-  getCategory,
-  updateCategory,
-  importCategories
+  createCategory: write("createCategory", "Product category created successfully", 201),
+  updateCategory: write("updateCategory", "Product category updated successfully"),
+  listCategories, getCategory, importCategories, seedDefaults,
 };

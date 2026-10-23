@@ -1,15 +1,23 @@
 const Joi = require("joi");
 
-const name = Joi.string().trim().min(1).max(100);
+const name = Joi.string()
+  .trim()
+  .min(1)
+  .max(100);
 
-const optionalText = (maximum) =>
-  Joi.string().trim().max(maximum).allow(null, "");
+const description = Joi.string()
+  .trim()
+  .max(1000)
+  .allow(null, "");
 
-const status = Joi.string().valid("ACTIVE", "INACTIVE");
+const status = Joi.string().valid(
+  "ACTIVE",
+  "INACTIVE",
+);
 
-const createSchema = Joi.object({
+const createProductBrandSchema = Joi.object({
   name: name.required(),
-  description: optionalText(1000),
+  description,
   status: status.default("ACTIVE"),
 }).unknown(false);
 
@@ -22,7 +30,7 @@ const updateSchema = Joi.object({
     .required(),
 
   name,
-  description: optionalText(1000),
+  description,
   status,
 })
   .or("name", "description", "status")
@@ -34,33 +42,59 @@ const paramsSchema = Joi.object({
     .pattern(/^[a-f\d]{24}$/i)
     .required()
     .messages({
-      "string.pattern.base": "A valid brand ID is required",
+      "string.pattern.base":
+        "A valid brand ID is required",
     }),
 }).unknown(false);
 
 const listSchema = Joi.object({
-  search: Joi.string().trim().max(100).allow("").default(""),
+  search: Joi.string()
+    .trim()
+    .max(100)
+    .allow("")
+    .default(""),
 
   status,
 
-  page: Joi.number().integer().min(1).max(100000).default(1),
+  page: Joi.number()
+    .integer()
+    .min(1)
+    .max(100000)
+    .default(1),
 
-  limit: Joi.number().integer().min(1).max(100).default(20),
+  limit: Joi.number()
+    .integer()
+    .min(1)
+    .max(100)
+    .default(20),
+}).unknown(false);
+
+const seedSchema = Joi.object({
+  confirm: Joi.boolean()
+    .valid(true)
+    .strict()
+    .required(),
 }).unknown(false);
 
 const validate =
   (schema, source = "body") =>
   (req, res, next) => {
-    const { error, value } = schema.validate(req[source] ?? {}, {
-      abortEarly: false,
-      convert: true,
-    });
+    const { error, value } = schema.validate(
+      req[source] ?? {},
+      {
+        abortEarly: false,
+        convert: true,
+      },
+    );
 
     if (error) {
       return res.status(400).json({
         success: false,
         message: "Validation failed",
-        errors: error.details.map((detail) => detail.message),
+
+        errors: error.details.map(
+          (detail) => detail.message,
+        ),
       });
     }
 
@@ -74,17 +108,26 @@ const validate =
 
     return next();
   };
-const createProductBrandSchema = Joi.object({
-  name: Joi.string().trim().min(1).max(100).required(),
 
-  description: Joi.string().trim().max(1000).allow(null, ""),
-
-  status: status.default("ACTIVE"),
-}).unknown(false);
 module.exports = {
-  validateCreate: validate(createSchema),
-  validateUpdate: validate(updateSchema),
-  validateParams: validate(paramsSchema, "params"),
-  validateList: validate(listSchema, "query"),
+  createSchema: createProductBrandSchema,
   createProductBrandSchema,
+
+  validateCreate: validate(
+    createProductBrandSchema,
+  ),
+
+  validateUpdate: validate(updateSchema),
+
+  validateParams: validate(
+    paramsSchema,
+    "params",
+  ),
+
+  validateList: validate(
+    listSchema,
+    "query",
+  ),
+
+  validateSeed: validate(seedSchema),
 };

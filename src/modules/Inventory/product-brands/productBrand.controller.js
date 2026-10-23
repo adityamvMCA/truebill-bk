@@ -1,4 +1,5 @@
 const service = require("./productBrand.service");
+
 const { importProductBrands } = require("./productBrand.import");
 
 const getContext = (req) => ({
@@ -9,24 +10,6 @@ const getContext = (req) => ({
   payload: req.validatedBody,
 });
 
-const importBrands = async (req, res, next) => {
-  try {
-    const result = await importProductBrands({
-      tenant: req.tenant,
-      userId: req.user.userId,
-      buffer: req.file?.buffer,
-      ipAddress: req.ip,
-    });
-
-    return res.status(200).json({
-      success: true,
-      message: "Product brands imported successfully",
-      ...result,
-    });
-  } catch (error) {
-    return next(error);
-  }
-};
 const createBrand = async (req, res, next) => {
   try {
     const data = await service.createBrand(getContext(req));
@@ -85,10 +68,48 @@ const updateBrand = async (req, res, next) => {
   }
 };
 
+const importBrands = async (req, res, next) => {
+  try {
+    const result = await importProductBrands({
+      ...getContext(req),
+      buffer: req.file?.buffer,
+    });
+
+    return res.status(200).json({
+      success: !result.requiresVerification,
+
+      ...result,
+
+      message: result.message || "Import completed; check row results",
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+const seedDefaults = async (req, res, next) => {
+  try {
+    const data = await service.seedDefaults({
+      ...getContext(req),
+      confirm: req.validatedBody.confirm,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message:
+        "Tenant brand defaults seeded without overwriting existing values",
+      data,
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
 module.exports = {
   createBrand,
   listBrands,
   getBrand,
   updateBrand,
-  importBrands
+  importBrands,
+  seedDefaults,
 };
