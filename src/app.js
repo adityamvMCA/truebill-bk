@@ -53,7 +53,7 @@ const stockValuationRoutes = require("./modules/Inventory/stock-valuation/stockV
 const warehouseRoutes = require("./modules/Inventory/warehouses/warehouse.routes");
 const warehouseStockRoutes = require("./modules/Inventory/warehouse-stock/warehouseStock.routes");
 const stockTransferRoutes = require("./modules/Inventory/stock-transfers/stockTransfer.routes");
-const expenseRoutes = require("./modules/accounting/Expenses/expense.routes");
+const expenseRoutes = require("./modules/accounting/expenses/expense.routes");
 const app = express();
 const hsnSacCodeRoutes = require("./modules/Inventory/hsn-sac-codes/hsnSacCode.routes");
 

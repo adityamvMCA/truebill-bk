@@ -1,6 +1,3 @@
-// Shared helpers for Expense pages.
-// formatPaise, getErrors, loadAllPages, localDate and GST_RATES are reused
-// from purchaseBill.utils so both modules behave the same.
 
 export {
   GST_RATES,
