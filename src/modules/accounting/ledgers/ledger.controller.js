@@ -1,25 +1,46 @@
 const ledgerService = require("./ledger.service");
 
+const mongoose = require("mongoose");
+// const getAllLedgers = async (req, res, next) => {
+//   try {
+//     const ledgers = await ledgerService.getLedgers({
+//       tenantId: req.tenantId,
+//       groupCode: req.query.groupCode,
+//       type: req.query.type,
+//       nature: req.query.nature,
+//       includeInactive: req.query.includeInactive === "true",
+//     });
+
+//     return res.status(200).json({
+//       success: true,
+//       total: ledgers.length,
+//       data: ledgers,
+//     });
+//   } catch (error) {
+//     next(error);
+//   }
+// };
+const { getReadyTenantConnection } = require("../../../tenancy/tenantConnectionManager");
+
 const getAllLedgers = async (req, res, next) => {
   try {
+    const connection = getReadyTenantConnection(req.tenant);
+
     const ledgers = await ledgerService.getLedgers({
-      tenantId: req.tenantId,
+      tenantId: new mongoose.Types.ObjectId(String(req.tenant._id ?? req.tenant.id)),
+      connection,
       groupCode: req.query.groupCode,
       type: req.query.type,
       nature: req.query.nature,
+      search: req.query.search,
       includeInactive: req.query.includeInactive === "true",
     });
 
-    return res.status(200).json({
-      success: true,
-      total: ledgers.length,
-      data: ledgers,
-    });
+    return res.status(200).json({ success: true, count: ledgers.length, data: ledgers });
   } catch (error) {
-    next(error);
+    return next(error);
   }
 };
-
 const seedLedgers = async (req, res, next) => {
   try {
     const result = await ledgerService.seedLedgersForTenant({

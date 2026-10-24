@@ -29,6 +29,9 @@ const SOURCE_TYPES = [
   "SALES_INVOICE",
   "CUSTOMER_RECEIPT",
   "SALES_RETURN",
+  "PURCHASE_RETURN",
+  "CREDIT_NOTE",
+  "DEBIT_NOTE",
 ];
 
 const createError = (message, statusCode = 400) => {

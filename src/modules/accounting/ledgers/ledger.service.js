@@ -1,8 +1,6 @@
 const Ledger = require("./ledger.model");
 const LedgerGroup = require("../ledger-groups/ledgerGroup.model");
-const {
-  seedDefaultLedgers,
-} = require("../seeds/seedDefaultLedgers");
+const { seedDefaultLedgers } = require("../seeds/seedDefaultLedgers");
 
 const NORMAL_BALANCE_BY_NATURE = {
   ASSET: "DEBIT",
@@ -14,27 +12,35 @@ const NORMAL_BALANCE_BY_NATURE = {
 
 const normalizeText = (value) => String(value || "").trim();
 
+const mongoose = require("mongoose");
+const {
+  getTenantAccountingModels,
+} = require("../../../tenancy/tenantAccountingModels");
 const getLedgers = async ({
   tenantId,
+  connection, // <- NEW, required
   groupCode,
   type,
   nature,
+  search,
   includeInactive = false,
 }) => {
-  const filter = {
-    tenantId,
-  };
+  const { Ledger, LedgerGroup } = getTenantAccountingModels(connection);
 
-  if (!includeInactive) {
-    filter.isActive = true;
-  }
+  const filter = { tenantId };
 
-  if (type) {
-    filter.type = String(type).trim().toUpperCase();
-  }
+  if (!includeInactive) filter.isActive = true;
+  if (type) filter.type = String(type).trim().toUpperCase();
+  if (nature) filter.nature = String(nature).trim().toUpperCase();
 
-  if (nature) {
-    filter.nature = String(nature).trim().toUpperCase();
+  if (search) {
+    const rx = new RegExp(
+      String(search)
+        .trim()
+        .replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+      "i",
+    );
+    filter.$or = [{ name: rx }, { code: rx }];
   }
 
   if (groupCode) {
@@ -46,20 +52,70 @@ const getLedgers = async ({
       .select("_id")
       .lean();
 
-    if (!group) {
-      return [];
-    }
-
+    if (!group) return [];
     filter.ledgerGroupId = group._id;
   }
 
-  return Ledger.find(filter)
-    .populate("ledgerGroupId", "code name nature")
-    .sort({
-      name: 1,
-    })
-    .lean();
+  const query = Ledger.find(filter).sort({ name: 1 });
+
+  // Only populate if LedgerGroup is registered on this tenant connection.
+  if (LedgerGroup) {
+    query.populate({
+      path: "ledgerGroupId",
+      model: LedgerGroup,
+      select: "code name nature",
+    });
+  }
+
+  return query.lean();
 };
+
+// const getLedgers = async ({
+//   tenantId,
+//   groupCode,
+//   type,
+//   nature,
+//   includeInactive = false,
+// }) => {
+//   const filter = {
+//     tenantId,
+//   };
+
+//   if (!includeInactive) {
+//     filter.isActive = true;
+//   }
+
+//   if (type) {
+//     filter.type = String(type).trim().toUpperCase();
+//   }
+
+//   if (nature) {
+//     filter.nature = String(nature).trim().toUpperCase();
+//   }
+
+//   if (groupCode) {
+//     const group = await LedgerGroup.findOne({
+//       tenantId,
+//       code: String(groupCode).trim().toUpperCase(),
+//       isActive: true,
+//     })
+//       .select("_id")
+//       .lean();
+
+//     if (!group) {
+//       return [];
+//     }
+
+//     filter.ledgerGroupId = group._id;
+//   }
+
+//   return Ledger.find(filter)
+//     .populate("ledgerGroupId", "code name nature")
+//     .sort({
+//       name: 1,
+//     })
+//     .lean();
+// };
 
 const createLedger = async ({
   tenantId,
@@ -101,10 +157,7 @@ const createLedger = async ({
 
   const exists = await Ledger.exists({
     tenantId,
-    $or: [
-      { code: normalizedCode },
-      { name: normalizedName },
-    ],
+    $or: [{ code: normalizedCode }, { name: normalizedName }],
   });
 
   if (exists) {

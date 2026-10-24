@@ -241,7 +241,6 @@
 //   mongoose.models.AccountingJournal ||
 //   mongoose.model("AccountingJournal", journalSchema);
 
-
 const mongoose = require("mongoose");
 
 const journalLineSchema = new mongoose.Schema(
@@ -334,6 +333,10 @@ const journalSchema = new mongoose.Schema(
         "SALES_RETURN",
         "PURCHASE_RETURN",
         "EXPENSE",
+        "CREDIT_NOTE",
+        "DEBIT_NOTE",
+        "TDS_DEDUCTION",
+        "TDS_PAYMENT",
       ],
       required: true,
     },

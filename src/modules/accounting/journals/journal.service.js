@@ -463,6 +463,10 @@ const SOURCE_PREFIXES = {
   SALES_RETURN: "SR",
   PURCHASE_RETURN: "PRET",
   EXPENSE: "EX",
+  CREDIT_NOTE: "CN",
+  DEBIT_NOTE: "DN",
+  TDS_DEDUCTION: "TD",
+  TDS_PAYMENT: "TP",
 };
 
 const postJournal = async ({
