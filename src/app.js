@@ -52,6 +52,8 @@ const stockAlertRoutes = require("./modules/Inventory/stock-alerts/stockAlert.ro
 const stockValuationRoutes = require("./modules/Inventory/stock-valuation/stockValuation.routes");
 const warehouseRoutes = require("./modules/Inventory/warehouses/warehouse.routes");
 const warehouseStockRoutes = require("./modules/Inventory/warehouse-stock/warehouseStock.routes");
+const stockTransferRoutes = require("./modules/Inventory/stock-transfers/stockTransfer.routes");
+const expenseRoutes = require("./modules/accounting/Expenses/expense.routes");
 const app = express();
 const hsnSacCodeRoutes = require("./modules/Inventory/hsn-sac-codes/hsnSacCode.routes");
 
@@ -176,6 +178,8 @@ app.use("/api/stock-alerts", stockAlertRoutes);
 app.use("/api/stock-valuation", stockValuationRoutes);
 app.use("/api/warehouses", warehouseRoutes);
 app.use("/api/warehouse-stock", warehouseStockRoutes);
+app.use("/api/stock-transfers", stockTransferRoutes);
+app.use("/api/expenses", expenseRoutes);
 app.use(express.json({ limit: "5mb" }));
 app.use((req, res) =>
   res.status(404).json({

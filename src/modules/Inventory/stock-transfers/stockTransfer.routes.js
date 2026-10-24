@@ -1,0 +1,13 @@
+const express = require("express");
+const verifyToken = require("../../../middleware/authMiddleware");
+const resolveTenant = require("../../../middleware/tenantMiddleware");
+const requirePermission = require("../../../middleware/permissionMiddleware");
+const controller = require("./stockTransfer.controller");
+const validation = require("./stockTransfer.validation");
+const router = express.Router();
+router.use(verifyToken, resolveTenant);
+router.post("/enable-multi-warehouse", requirePermission("warehouse.enableMultiWarehouse"), validation.validateEnable, controller.enableMultiWarehouse);
+router.get("/", requirePermission("stockTransfer.view"), validation.validateList, controller.listTransfers);
+router.post("/", requirePermission("stockTransfer.create"), validation.validateCreate, controller.createTransfer);
+router.get("/:transferNumber", requirePermission("stockTransfer.view"), validation.validateParams, controller.getTransfer);
+module.exports = router;

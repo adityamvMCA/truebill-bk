@@ -6,6 +6,12 @@ const {
   getCustomerOutstandingHandler,
   getSupplierOutstandingHandler,
 } = require("./outstanding.controller");
+const {
+  getPayables,
+  getPayableParty,
+  getReceivables,
+  getReceivableParty,
+} = require("../../reports/receivablePayable.controller");
 
 const router = express.Router();
 
@@ -35,4 +41,17 @@ router.get(
   getSupplierOutstandingHandler,
 );
 
+router.get("/payables", requirePermission("ledger.view"), getPayables);
+router.get(
+  "/payables/:partyId",
+  requirePermission("ledger.view"),
+  getPayableParty,
+);
+
+router.get("/receivables", requirePermission("ledger.view"), getReceivables);
+router.get(
+  "/receivables/:partyId",
+  requirePermission("ledger.view"),
+  getReceivableParty,
+);
 module.exports = router;

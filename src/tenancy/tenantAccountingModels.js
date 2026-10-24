@@ -38,6 +38,9 @@ const LegacyPurchaseRfq = require("../modules/purchase-rfqs/purchaseRfq.model");
 const LegacySupplierQuotation = require("../modules/supplier-quotations/supplierQuotation.model");
 const LegacyPurchaseOrder = require("../modules/purchase-orders/purchaseOrder.model");
 const LegacyGoodsReceipt = require("../modules/goods-receipts/goodsReceipt.model");
+const LegacyStockTransfer = require(
+  "../modules/Inventory/stock-transfers/stockTransfer.model",
+);
 const assertConnection = (connection) => {
   if (
     !connection ||
@@ -129,6 +132,7 @@ const LegacyWarehouseStock = require(
   "../modules/Inventory/warehouse-stock/warehouseStock.model",
 );
 const LegacyInventorySettings = require("../modules/Inventory/warehouses/inventorySettings.model");
+const ExpenseSchema = require("../modules/accounting/expenses/expense.model")
 const getTenantAccountingModels = (connection) => {
   assertConnection(connection);
 
@@ -168,6 +172,8 @@ const getTenantAccountingModels = (connection) => {
     Warehouse: LegacyWarehouse,
     InventorySettings: LegacyInventorySettings,
     WarehouseStock: LegacyWarehouseStock,
+    StockTransfer: LegacyStockTransfer,
+    Expense : ExpenseSchema,
   };
 
   const models = {};
