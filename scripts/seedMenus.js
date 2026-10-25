@@ -1,7 +1,6 @@
 require("dotenv").config();
 
 const mongoose = require("mongoose");
-
 const Menu = require("../src/models/Menu");
 
 const MONGODB_URI =
@@ -14,29 +13,12 @@ const APP_CODE = "truebill";
 const ROLES = {
   ADMIN: ["admin"],
   MANAGEMENT: ["admin", "manager"],
+  ACCOUNTING: ["admin", "manager", "accountant"],
   SALES: ["admin", "manager", "sales"],
   PURCHASE: ["admin", "manager", "purchase"],
   INVENTORY: ["admin", "manager", "inventory"],
-  PURCHASE_PARENT: [
-    "admin",
-    "manager",
-    "purchase",
-    "inventory",
-  ],
-  PURCHASE_RECEIVING: [
-    "admin",
-    "manager",
-    "purchase",
-    "inventory",
-  ],
-  ALL: [
-    "admin",
-    "manager",
-    "sales",
-    "purchase",
-    "inventory",
-    "viewer",
-  ],
+  PURCHASE_PARENT: ["admin", "manager", "purchase", "inventory"],
+  ALL: ["admin", "manager", "sales", "purchase", "inventory", "viewer"],
 };
 
 const normalize = (value) =>
@@ -44,14 +26,7 @@ const normalize = (value) =>
     .trim()
     .toLowerCase();
 
-const child = (
-  id,
-  label,
-  icon,
-  path,
-  feature,
-  roles,
-) => ({
+const child = (id, label, icon, path, feature, roles) => ({
   id,
   label,
   icon,
@@ -82,7 +57,6 @@ const menus = [
     feature: "sales",
     roles: ROLES.SALES,
     order: 1,
-
     children: [
       child(
         "sales-quotations",
@@ -92,7 +66,6 @@ const menus = [
         "sales.quotations",
         ROLES.SALES,
       ),
-
       child(
         "sales-orders",
         "Sales Orders",
@@ -101,16 +74,14 @@ const menus = [
         "sales.orders",
         ROLES.SALES,
       ),
-
       child(
         "sales-delivery",
         "Delivery Notes",
         "Truck",
         "/sales/delivery",
-        "sales",
+        "sales.delivery",
         ROLES.SALES,
       ),
-
       child(
         "sales-invoices",
         "Sales Invoices",
@@ -119,23 +90,21 @@ const menus = [
         "sales.invoices",
         ROLES.SALES,
       ),
-
       child(
         "sales-returns",
         "Sales Returns",
         "Undo2",
         "/sales/returns",
-        "sales",
+        "salesReturn.view",
         ROLES.SALES,
       ),
-
       child(
         "customer-receipts",
         "Customer Receipts",
         "Receipt",
         "/sales/customer-receipts",
-        "sales",
-        ["admin", "sales"],
+        "sales.customerReceipts",
+        ROLES.SALES,
       ),
     ],
   },
@@ -149,7 +118,6 @@ const menus = [
     feature: "purchase",
     roles: ROLES.PURCHASE_PARENT,
     order: 1,
-
     children: [
       child(
         "purchase-requisitions",
@@ -159,7 +127,6 @@ const menus = [
         "purchase.requisitions",
         ROLES.PURCHASE,
       ),
-
       child(
         "purchase-rfq",
         "RFQ",
@@ -168,7 +135,6 @@ const menus = [
         "purchase.rfq",
         ROLES.PURCHASE,
       ),
-
       child(
         "purchase-quotations",
         "Supplier Quotations",
@@ -177,7 +143,6 @@ const menus = [
         "purchase.quotations",
         ROLES.PURCHASE,
       ),
-
       child(
         "purchase-quotation-comparison",
         "Quotation Comparison",
@@ -186,7 +151,6 @@ const menus = [
         "purchase.quotations",
         ROLES.PURCHASE,
       ),
-
       child(
         "purchase-orders",
         "Purchase Orders",
@@ -195,34 +159,30 @@ const menus = [
         "purchase.orders",
         ROLES.PURCHASE,
       ),
-
       child(
         "purchase-grn",
         "Goods Receipt",
         "PackageCheck",
         "/purchase/grn",
-        "purchase",
+        "goodsReceipt.view",
         ROLES.PURCHASE_RECEIVING,
       ),
-
       child(
         "purchase-invoices",
         "Purchase Bills",
         "ReceiptText",
         "/purchase/invoices",
-        "purchase",
+        "purchase.invoices",
         ROLES.PURCHASE,
       ),
-
       child(
         "purchase-returns",
         "Purchase Returns",
         "Undo2",
         "/purchase/returns",
-        "purchase",
+        "purchaseReturn.view",
         ROLES.PURCHASE,
       ),
-
       child(
         "supplier-payments",
         "Supplier Payments",
@@ -243,7 +203,6 @@ const menus = [
     feature: "inventory",
     roles: ROLES.INVENTORY,
     order: 1,
-
     children: [
       child(
         "inventory-products",
@@ -253,7 +212,6 @@ const menus = [
         "inventory.products",
         ROLES.INVENTORY,
       ),
-
       child(
         "inventory-categories",
         "Categories",
@@ -262,34 +220,38 @@ const menus = [
         "inventory.categories",
         ROLES.INVENTORY,
       ),
-
       child(
         "inventory-units",
         "Units",
         "Ruler",
         "/inventory/units",
-        "inventory",
+        "inventory.units",
         ROLES.INVENTORY,
       ),
-
       child(
-        "inventory-stock",
-        "Stock",
-        "Warehouse",
-        "/inventory/stock",
-        "inventory.stock",
+        "inventory-brands",
+        "Brands",
+        "Tag",
+        "/brand-list",
+        "inventory.brands",
         ROLES.INVENTORY,
       ),
-
       child(
-        "inventory-stock-movements",
-        "Stock Movements",
-        "ArrowLeftRight",
-        "/stock-movements",
-        "inventory.stock",
+        "inventory-hsn",
+        "HSN / SAC Codes",
+        "Hash",
+        "/hsn-sac-codes",
+        "inventory.hsn",
         ROLES.INVENTORY,
       ),
-
+      child(
+        "inventory-tax-rates",
+        "Tax Rates",
+        "Percent",
+        "/tax-rates",
+        "inventory.taxRates",
+        ROLES.INVENTORY,
+      ),
       child(
         "inventory-warehouses",
         "Warehouses",
@@ -298,7 +260,14 @@ const menus = [
         "inventory.warehouses",
         ROLES.INVENTORY,
       ),
-
+      child(
+        "inventory-stock-movements",
+        "Stock Movements",
+        "ArrowLeftRight",
+        "/stock-movements",
+        "inventory.stock",
+        ROLES.INVENTORY,
+      ),
       child(
         "inventory-transfer",
         "Stock Transfer",
@@ -307,7 +276,6 @@ const menus = [
         "inventory.transfers",
         ROLES.INVENTORY,
       ),
-
       child(
         "inventory-adjustment",
         "Stock Adjustment",
@@ -316,7 +284,6 @@ const menus = [
         "inventory.adjustments",
         ROLES.INVENTORY,
       ),
-
       child(
         "inventory-valuation",
         "Stock Valuation",
@@ -337,7 +304,6 @@ const menus = [
     feature: "sales.customers",
     roles: ROLES.SALES,
     order: 1,
-
     children: [
       child(
         "customers-list",
@@ -347,22 +313,12 @@ const menus = [
         "sales.customers",
         ROLES.SALES,
       ),
-
-      child(
-        "customers-groups",
-        "Customer Groups",
-        "Tags",
-        "/customers/groups",
-        "sales.customers",
-        ROLES.SALES,
-      ),
-
       child(
         "customers-outstanding",
         "Outstanding",
         "IndianRupee",
         "/customers/outstanding",
-        "accounting.receivables",
+        "customerOutstanding.view",
         ROLES.MANAGEMENT,
       ),
     ],
@@ -377,7 +333,6 @@ const menus = [
     feature: "purchase.vendors",
     roles: ROLES.PURCHASE,
     order: 2,
-
     children: [
       child(
         "suppliers-list",
@@ -387,22 +342,12 @@ const menus = [
         "purchase.vendors",
         ROLES.PURCHASE,
       ),
-
-      child(
-        "suppliers-groups",
-        "Supplier Groups",
-        "Tags",
-        "/suppliers/groups",
-        "purchase.vendors",
-        ROLES.PURCHASE,
-      ),
-
       child(
         "suppliers-outstanding",
         "Outstanding",
         "IndianRupee",
         "/suppliers/outstanding",
-        "accounting.payables",
+        "supplierOutstanding.view",
         ROLES.MANAGEMENT,
       ),
     ],
@@ -415,107 +360,128 @@ const menus = [
     icon: "BookOpen",
     path: "/accounting",
     feature: "accounting",
-    roles: ROLES.MANAGEMENT,
+    roles: ROLES.ACCOUNTING,
     order: 1,
-
     children: [
-      child(
-        "accounting-chart",
-        "Chart of Accounts",
-        "ListTree",
-        "/accounting/chart-of-accounts",
-        "accounting.chartOfAccounts",
-        ROLES.MANAGEMENT,
-      ),
-
       child(
         "accounting-journal",
         "Journal Vouchers",
         "BookOpen",
         "/accounting/journal",
         "accounting.journalEntries",
-        ROLES.MANAGEMENT,
+        ROLES.ACCOUNTING,
       ),
-
       child(
         "accounting-ledger",
         "Ledgers",
         "BookText",
         "/accounting/ledger",
         "accounting.ledgers",
-        ROLES.MANAGEMENT,
+        ROLES.ACCOUNTING,
       ),
-
       child(
         "accounting-daybook",
         "Day Book",
         "CalendarDays",
         "/accounting/daybook",
         "accounting.journalEntries",
-        ROLES.MANAGEMENT,
+        ROLES.ACCOUNTING,
       ),
-
       child(
         "accounting-trial-balance",
         "Trial Balance",
         "Scale",
         "/accounting/trial-balance",
         "accounting.trialBalance",
-        ROLES.MANAGEMENT,
+        ROLES.ACCOUNTING,
       ),
-
       child(
         "accounting-balance-sheet",
         "Balance Sheet",
         "FileText",
         "/accounting/balance-sheet",
         "accounting.reports",
-        ROLES.MANAGEMENT,
+        ROLES.ACCOUNTING,
       ),
-
       child(
         "accounting-customer-ledger",
         "Customer Ledger",
         "Users",
         "/accounting/customer-ledger",
         "accounting.ledgers",
-        ROLES.MANAGEMENT,
+        ROLES.ACCOUNTING,
       ),
-
       child(
         "accounting-supplier-ledger",
         "Supplier Ledger",
         "Truck",
         "/accounting/supplier-ledger",
         "accounting.ledgers",
-        ROLES.MANAGEMENT,
+        ROLES.ACCOUNTING,
       ),
-
       child(
         "accounting-receivables",
         "Receivables",
         "ArrowDownCircle",
         "/accounting/receivables",
         "accounting.receivables",
-        ROLES.MANAGEMENT,
+        ROLES.ACCOUNTING,
       ),
-
       child(
         "accounting-payables",
         "Payables",
         "ArrowUpCircle",
         "/accounting/payables",
         "accounting.payables",
-        ROLES.MANAGEMENT,
+        ROLES.ACCOUNTING,
       ),
-
       child(
-        "accounting-bank-reconciliation",
-        "Bank Reconciliation",
-        "Landmark",
-        "/accounting/bank-reconciliation",
-        "bank.reconciliation",
-        ROLES.MANAGEMENT,
+        "accounting-cash-book",
+        "Cash Book",
+        "Wallet",
+        "/accounting/cash-book",
+        "accounting.cashBook",
+        ROLES.ACCOUNTING,
+      ),
+      child(
+        "accounting-petty-cash",
+        "Petty Cash",
+        "Coins",
+        "/accounting/petty-cash",
+        "accounting.pettyCash",
+        ROLES.ACCOUNTING,
+      ),
+      child(
+        "accounting-notes",
+        "Notes",
+        "StickyNote",
+        "/accounting/notes",
+        "accounting.notes",
+        ROLES.ACCOUNTING,
+      ),
+      child(
+        "accounting-tds-register",
+        "TDS Register",
+        "FileCheck",
+        "/accounting/tds",
+        "accounting.tds",
+        ROLES.ACCOUNTING,
+      ),
+      child(
+        "accounting-tds-deduct",
+        "TDS Deduct",
+        "Scissors",
+        "/accounting/tds/deduct",
+        "accounting.tds",
+        ROLES.ACCOUNTING,
+      ),
+      child(
+        "accounting-tds-natures",
+        "TDS Natures",
+        "ListTree",
+        "/accounting/tds/natures",
+        "accounting.tds",
+        ROLES.ACCOUNTING,
       ),
     ],
   },
@@ -527,9 +493,8 @@ const menus = [
     icon: "Landmark",
     path: "/payments",
     feature: "bank",
-    roles: ROLES.MANAGEMENT,
+    roles: ROLES.ACCOUNTING,
     order: 1,
-
     children: [
       child(
         "bank-accounts",
@@ -537,43 +502,23 @@ const menus = [
         "Building2",
         "/accounting/banks",
         "bank.accounts",
-        ROLES.MANAGEMENT,
+        ROLES.ACCOUNTING,
       ),
-
       child(
-        "bank-receipts",
-        "Receipts",
-        "ArrowDownCircle",
-        "/payments/receipts",
-        "bank.receipts",
-        ROLES.MANAGEMENT,
+        "bank-reconciliation",
+        "Bank Reconciliation",
+        "Landmark",
+        "/accounting/bank-reconciliation",
+        "bank.reconciliation",
+        ROLES.ACCOUNTING,
       ),
-
-      child(
-        "bank-payments",
-        "Payments",
-        "ArrowUpCircle",
-        "/payments/payments",
-        "bank.payments",
-        ROLES.MANAGEMENT,
-      ),
-
-      child(
-        "bank-transfer",
-        "Bank Transfer",
-        "ArrowLeftRight",
-        "/payments/bank-transfer",
-        "bank.transfers",
-        ROLES.MANAGEMENT,
-      ),
-
       child(
         "bank-ledger",
         "Bank Ledger",
         "BookText",
         "/accounting/bank-ledger",
-        "accounting.ledgers",
-        ROLES.MANAGEMENT,
+        "bank.ledger",
+        ROLES.ACCOUNTING,
       ),
     ],
   },
@@ -585,9 +530,8 @@ const menus = [
     icon: "Wallet",
     path: "/expenses",
     feature: "expenses",
-    roles: ROLES.MANAGEMENT,
+    roles: ROLES.ACCOUNTING,
     order: 1,
-
     children: [
       child(
         "expenses-list",
@@ -595,25 +539,7 @@ const menus = [
         "ReceiptText",
         "/expenses/list",
         "expenses.list",
-        ROLES.MANAGEMENT,
-      ),
-
-      child(
-        "expenses-categories",
-        "Expense Categories",
-        "Tags",
-        "/expenses/categories",
-        "expenses.categories",
-        ROLES.MANAGEMENT,
-      ),
-
-      child(
-        "expenses-approval",
-        "Expense Approval",
-        "CheckCircle",
-        "/expenses/approval",
-        "expenses.approvals",
-        ROLES.MANAGEMENT,
+        ROLES.ACCOUNTING,
       ),
     ],
   },
@@ -625,9 +551,8 @@ const menus = [
     icon: "ReceiptIndianRupee",
     path: "/gst-tax",
     feature: "gst",
-    roles: ROLES.MANAGEMENT,
+    roles: ROLES.ACCOUNTING,
     order: 1,
-
     children: [
       child(
         "gst-summary",
@@ -635,18 +560,16 @@ const menus = [
         "ReceiptIndianRupee",
         "/gst-tax/summary",
         "gst.summary",
-        ROLES.MANAGEMENT,
+        ROLES.ACCOUNTING,
       ),
-
       child(
         "gst-reports",
         "GSTR Reports",
         "BarChart3",
         "/gst-tax/reports",
         "gst.gstrReports",
-        ROLES.MANAGEMENT,
+        ROLES.ACCOUNTING,
       ),
-
       child(
         "gst-configuration",
         "Tax Configuration",
@@ -654,153 +577,6 @@ const menus = [
         "/gst-tax/configuration",
         "gst.taxConfiguration",
         ROLES.ADMIN,
-      ),
-    ],
-  },
-
-  {
-    group: "Production",
-    groupOrder: 10,
-    label: "Production",
-    icon: "Factory",
-    path: "/production",
-    feature: "production",
-    roles: ROLES.INVENTORY,
-    order: 1,
-
-    children: [
-      child(
-        "production-orders",
-        "Production Orders",
-        "ClipboardPen",
-        "/production/orders",
-        "production.orders",
-        ROLES.INVENTORY,
-      ),
-
-      child(
-        "production-bom",
-        "Bill of Materials",
-        "Layers3",
-        "/production/bom",
-        "production.bom",
-        ROLES.INVENTORY,
-      ),
-
-      child(
-        "production-work-orders",
-        "Work Orders",
-        "ClipboardList",
-        "/production/work-orders",
-        "production.workOrders",
-        ROLES.INVENTORY,
-      ),
-
-      child(
-        "production-reports",
-        "Production Reports",
-        "BarChart3",
-        "/production/reports",
-        "production.reports",
-        ROLES.MANAGEMENT,
-      ),
-    ],
-  },
-
-  {
-    group: "HR & Payroll",
-    groupOrder: 11,
-    label: "HR & Payroll",
-    icon: "UsersRound",
-    path: "/hr",
-    feature: "hr",
-    roles: ROLES.MANAGEMENT,
-    order: 1,
-
-    children: [
-      child(
-        "hr-employees",
-        "Employees",
-        "UserRound",
-        "/hr/employees",
-        "hr.employees",
-        ROLES.MANAGEMENT,
-      ),
-
-      child(
-        "hr-attendance",
-        "Attendance",
-        "CalendarDays",
-        "/hr/attendance",
-        "hr.attendance",
-        ROLES.MANAGEMENT,
-      ),
-
-      child(
-        "hr-leave",
-        "Leave",
-        "CalendarDays",
-        "/hr/leave",
-        "hr.leave",
-        ROLES.MANAGEMENT,
-      ),
-
-      child(
-        "hr-payroll",
-        "Payroll",
-        "CircleDollarSign",
-        "/hr/payroll",
-        "hr.payroll",
-        ROLES.MANAGEMENT,
-      ),
-    ],
-  },
-
-  {
-    group: "Assets",
-    groupOrder: 12,
-    label: "Assets",
-    icon: "Box",
-    path: "/assets",
-    feature: "assets",
-    roles: ROLES.MANAGEMENT,
-    order: 1,
-
-    children: [
-      child(
-        "assets-list",
-        "All Assets",
-        "Monitor",
-        "/assets/list",
-        "assets.list",
-        ROLES.MANAGEMENT,
-      ),
-
-      child(
-        "assets-categories",
-        "Asset Categories",
-        "Tags",
-        "/assets/categories",
-        "assets.categories",
-        ROLES.MANAGEMENT,
-      ),
-
-      child(
-        "assets-depreciation",
-        "Depreciation",
-        "Percent",
-        "/assets/depreciation",
-        "assets.depreciation",
-        ROLES.MANAGEMENT,
-      ),
-
-      child(
-        "assets-reports",
-        "Asset Reports",
-        "BarChart3",
-        "/assets/reports",
-        "assets.reports",
-        ROLES.MANAGEMENT,
       ),
     ],
   },
@@ -814,7 +590,6 @@ const menus = [
     feature: "reports",
     roles: ROLES.ALL,
     order: 1,
-
     children: [
       child(
         "reports-sales",
@@ -824,7 +599,6 @@ const menus = [
         "reports.sales",
         ROLES.SALES,
       ),
-
       child(
         "reports-purchase",
         "Purchase Reports",
@@ -833,25 +607,6 @@ const menus = [
         "reports.purchase",
         ROLES.PURCHASE,
       ),
-
-      child(
-        "reports-inventory",
-        "Inventory Reports",
-        "Boxes",
-        "/reports/inventory",
-        "reports.inventory",
-        ROLES.INVENTORY,
-      ),
-
-      child(
-        "reports-accounting",
-        "Accounting Reports",
-        "PieChart",
-        "/reports/accounting",
-        "reports.accounting",
-        ROLES.MANAGEMENT,
-      ),
-
       child(
         "reports-outstanding",
         "Outstanding Reports",
@@ -872,7 +627,6 @@ const menus = [
     feature: "settings",
     roles: ROLES.ADMIN,
     order: 1,
-
     children: [
       child(
         "settings-company",
@@ -882,7 +636,6 @@ const menus = [
         "settings.company",
         ROLES.ADMIN,
       ),
-
       child(
         "settings-users",
         "Users",
@@ -891,7 +644,6 @@ const menus = [
         "settings.users",
         ROLES.ADMIN,
       ),
-
       child(
         "settings-roles",
         "Roles & Permissions",
@@ -900,7 +652,6 @@ const menus = [
         "settings.roles",
         ROLES.ADMIN,
       ),
-
       child(
         "settings-appearance",
         "Appearance",
@@ -909,7 +660,6 @@ const menus = [
         "settings.appearance",
         ROLES.ADMIN,
       ),
-
       child(
         "settings-notifications",
         "Notifications",
@@ -918,23 +668,24 @@ const menus = [
         "settings.notifications",
         ROLES.ADMIN,
       ),
+      child(
+        "settings-tally",
+        "Tally Gateway",
+        "Plug",
+        "/tally",
+        "settings.appearance",
+        ROLES.ADMIN,
+      ),
     ],
   },
 ];
 
-const buildChild = (
-  entry,
-  index,
-  parentRoles,
-) => ({
+const buildChild = (entry, index, parentRoles) => ({
   id: entry.id,
   label: entry.label,
   icon: entry.icon || null,
   path: entry.path || null,
-  feature: entry.feature
-    ? normalize(entry.feature)
-    : null,
-
+  feature: entry.feature ? normalize(entry.feature) : null,
   roles: [...(entry.roles || parentRoles)],
   order: entry.order ?? index + 1,
   isActive: entry.isActive !== false,
@@ -948,53 +699,32 @@ const validateMenus = () => {
     const parentKey = `${menu.group}:${menu.label}`;
 
     if (parentKeys.has(parentKey)) {
-      throw new Error(
-        `Duplicate parent menu: ${parentKey}`,
-      );
+      throw new Error(`Duplicate parent menu: ${parentKey}`);
     }
-
     parentKeys.add(parentKey);
 
-    if (
-      !menu.path?.startsWith("/") ||
-      menu.path.includes(":")
-    ) {
-      throw new Error(
-        `Invalid parent navigation path: ${menu.label}`,
-      );
+    if (!menu.path?.startsWith("/") || menu.path.includes(":")) {
+      throw new Error(`Invalid parent navigation path: ${menu.label}`);
     }
 
-    if (
-      !Array.isArray(menu.roles) ||
-      menu.roles.length === 0
-    ) {
-      throw new Error(
-        `Missing roles for menu: ${menu.label}`,
-      );
+    if (!Array.isArray(menu.roles) || menu.roles.length === 0) {
+      throw new Error(`Missing roles for menu: ${menu.label}`);
     }
 
     for (const entry of menu.children || []) {
       if (!entry.id || childIds.has(entry.id)) {
-        throw new Error(
-          `Missing or duplicate child ID: ${entry.id}`,
-        );
+        throw new Error(`Missing or duplicate child ID: ${entry.id}`);
       }
-
       childIds.add(entry.id);
 
-      if (
-        !entry.path?.startsWith("/") ||
-        entry.path.includes(":")
-      ) {
-        throw new Error(
-          `Invalid child navigation path: ${entry.label}`,
-        );
+      if (!entry.path?.startsWith("/") || entry.path.includes(":")) {
+        throw new Error(`Invalid child navigation path: ${entry.label}`);
       }
 
       for (const role of entry.roles || menu.roles) {
         if (!menu.roles.includes(role)) {
           throw new Error(
-            `Child "${entry.label}" allows "${role}" but its parent "${menu.label}" does not`,
+            `Child "${entry.label}" allows "${role}" but parent "${menu.label}" does not`,
           );
         }
       }
@@ -1006,13 +736,7 @@ const seedMenus = async () => {
   try {
     validateMenus();
 
-    console.log("Connecting to MongoDB...");
-
     await mongoose.connect(MONGODB_URI);
-
-    console.log(
-      `Connected to database: ${mongoose.connection.name}`,
-    );
 
     let created = 0;
     let updated = 0;
@@ -1020,13 +744,8 @@ const seedMenus = async () => {
     let childCount = 0;
 
     for (const menu of menus) {
-      const children = (menu.children || []).map(
-        (entry, index) =>
-          buildChild(
-            entry,
-            index,
-            menu.roles,
-          ),
+      const children = (menu.children || []).map((entry, index) =>
+        buildChild(entry, index, menu.roles),
       );
 
       const filter = {
@@ -1059,35 +778,21 @@ const seedMenus = async () => {
         },
       );
 
-      if (result.upsertedCount > 0) {
-        created += 1;
-      } else if (result.modifiedCount > 0) {
-        updated += 1;
-      } else {
-        unchanged += 1;
-      }
+      if (result.upsertedCount > 0) created += 1;
+      else if (result.modifiedCount > 0) updated += 1;
+      else unchanged += 1;
 
       childCount += children.length;
-
-      console.log(
-        `${menu.group} → ${menu.label}: ${children.length} submenu(s)`,
-      );
     }
 
-    console.log("");
     console.log("Menu seeding completed");
-    console.log(`Application: ${APP_CODE}`);
     console.log(`Created: ${created}`);
     console.log(`Updated: ${updated}`);
     console.log(`Unchanged: ${unchanged}`);
     console.log(`Parent menus: ${menus.length}`);
     console.log(`Child menus: ${childCount}`);
   } catch (error) {
-    console.error(
-      "Menu seeding failed:",
-      error?.message || error,
-    );
-
+    console.error("Menu seeding failed:", error?.message || error);
     process.exitCode = 1;
   } finally {
     await mongoose.disconnect();

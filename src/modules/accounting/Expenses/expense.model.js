@@ -129,7 +129,24 @@ const expenseSchema = new mongoose.Schema(
       ref: "AccountingLedger",
       default: null,
     },
-
+    tdsInput: {
+      type: new mongoose.Schema(
+        {
+          natureId: mongoose.Schema.Types.ObjectId,
+          deducteeType: String,
+          pan: { type: String, default: null },
+        },
+        { _id: false },
+      ),
+      default: null,
+    },
+    tdsAmountPaise: {
+      type: Number,
+      default: 0,
+      min: 0,
+      validate: { validator: Number.isSafeInteger },
+    },
+    tds: { type: mongoose.Schema.Types.Mixed, default: null },
     lines: {
       type: [expenseLineSchema],
       required: true,
