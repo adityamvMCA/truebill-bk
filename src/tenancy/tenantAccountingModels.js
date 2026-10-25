@@ -128,7 +128,7 @@ const LegacyStockAdjustment = require("../modules/Inventory/stock-adjustments/st
 const LegacyWarehouse = require("../modules/Inventory/warehouses/warehouse.model");
 const LegacyWarehouseStock = require("../modules/Inventory/warehouse-stock/warehouseStock.model");
 const LegacyInventorySettings = require("../modules/Inventory/warehouses/inventorySettings.model");
-const ExpenseSchema = require("../modules/accounting/expenses/expense.model");
+const ExpenseSchema = require("../modules/accounting/Expenses/expense.model");
 const noteSchema = require("../modules/accounting/Note/note.model");
 const {
   TdsNature: LegacyTdsNature,
@@ -207,3 +207,4 @@ module.exports = {
   getTenantAccountingModels,
   resolveAccountingSeedModels,
 };
+
