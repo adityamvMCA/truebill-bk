@@ -1,12 +1,3 @@
-/*
-  Admin check for expense approval.
-
-  ADJUST getRole() / ADMIN_ROLES to match how your auth token or User model
-  stores the role (for example req.user.role, req.user.roleName,
-  req.user.role.name). Only these roles may approve or reject expenses.
-*/
-
-// const ADMIN_ROLES = ["admin", "tenant_admin", "tenantadmin", "owner"];
 const ADMIN_ROLES = ["admin", "tenant_admin", "tenant", "owner", "developer"];
 
 const getRole = (user = {}) =>
