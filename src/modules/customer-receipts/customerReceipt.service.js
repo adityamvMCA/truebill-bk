@@ -67,9 +67,7 @@ const normalizeRequest = (payload) => {
   const receiptMethod = normalizeCode(payload.receiptMethod);
 
   if (
-    !["CASH", "BANK_TRANSFER", "UPI", "CHEQUE", "CARD"].includes(
-      receiptMethod,
-    )
+    !["CASH", "BANK_TRANSFER", "UPI", "CHEQUE", "CARD"].includes(receiptMethod)
   ) {
     throw createError("Invalid receipt method");
   }
@@ -92,9 +90,7 @@ const normalizeRequest = (payload) => {
       `Allocation ${index + 1} salesInvoiceId`,
     );
 
-    const salesInvoiceId = String(
-      allocation.salesInvoiceId,
-    ).toLowerCase();
+    const salesInvoiceId = String(allocation.salesInvoiceId).toLowerCase();
 
     if (seenInvoiceIds.has(salesInvoiceId)) {
       throw createError("An invoice can appear only once in a receipt");
@@ -103,10 +99,7 @@ const normalizeRequest = (payload) => {
     seenInvoiceIds.add(salesInvoiceId);
 
     const allocationPaise = assertPositivePaise(
-      rupeesToPaise(
-        allocation.amount,
-        `Allocation ${index + 1} amount`,
-      ),
+      rupeesToPaise(allocation.amount, `Allocation ${index + 1} amount`),
       `Allocation ${index + 1} amount`,
     );
 
@@ -232,17 +225,10 @@ const getCustomerAndLedger = async ({
   return { customer, ledger };
 };
 
-const getReceiptLedger = async ({
-  models,
-  tenantId,
-  request,
-  session,
-}) => {
+const getReceiptLedger = async ({ models, tenantId, request, session }) => {
   const { Ledger } = models;
 
-  const expectedType = request.receiptMethod === "CASH"
-    ? "CASH"
-    : "BANK";
+  const expectedType = request.receiptMethod === "CASH" ? "CASH" : "BANK";
 
   const ledger = await Ledger.findOne({
     _id: request.receiptLedgerId,
@@ -266,11 +252,7 @@ const getReceiptLedger = async ({
   return ledger;
 };
 
-const notifyReceiptPosted = async ({
-  tenantId,
-  userId,
-  receipt,
-}) => {
+const notifyReceiptPosted = async ({ tenantId, userId, receipt }) => {
   try {
     await NotificationService.create({
       tenantId,
@@ -308,12 +290,7 @@ const createCustomerReceipt = async ({
 
   const models = getTenantAccountingModels(connection);
 
-  const {
-    CustomerReceipt,
-    SalesInvoice,
-    Ledger,
-    AuditLog,
-  } = models;
+  const { CustomerReceipt, SalesInvoice, Ledger, AuditLog } = models;
 
   const tenantId = tenant._id;
 
@@ -359,10 +336,7 @@ const createCustomerReceipt = async ({
         return;
       }
 
-      const {
-        customer,
-        ledger: customerLedger,
-      } = await getCustomerAndLedger({
+      const { customer, ledger: customerLedger } = await getCustomerAndLedger({
         models,
         tenantId,
         customerId: request.customerId,
@@ -437,10 +411,7 @@ const createCustomerReceipt = async ({
           );
         }
 
-        if (
-          new Date(request.receiptDate) <
-          new Date(invoice.invoiceDate)
-        ) {
+        if (new Date(request.receiptDate) < new Date(invoice.invoiceDate)) {
           throw createError(
             `Receipt date cannot be before the date of ${invoice.invoiceNumber}. ` +
               "Advance receipts are not supported in this version.",
@@ -482,8 +453,7 @@ const createCustomerReceipt = async ({
         sourceId: receiptId,
         sourceNumber: receiptNumber,
         narration:
-          `Customer receipt ${receiptNumber} — ` +
-          customer.customerName,
+          `Customer receipt ${receiptNumber} — ` + customer.customerName,
 
         lines: [
           {
@@ -510,9 +480,7 @@ const createCustomerReceipt = async ({
         invoice.outstandingAmountPaise -= allocation.amountPaise;
 
         invoice.paymentStatus =
-          invoice.outstandingAmountPaise === 0
-            ? "PAID"
-            : "PARTIALLY_PAID";
+          invoice.outstandingAmountPaise === 0 ? "PAID" : "PARTIALLY_PAID";
 
         invoice.updatedBy = userId;
 
@@ -543,10 +511,7 @@ const createCustomerReceipt = async ({
         .lean();
 
       if (!updatedCustomerLedger) {
-        throw createError(
-          "Customer ledger was not found after posting",
-          409,
-        );
+        throw createError("Customer ledger was not found after posting", 409);
       }
 
       const oldCustomerData = customer.toObject();
@@ -676,8 +641,7 @@ const createCustomerReceipt = async ({
   };
 };
 
-const escapeRegex = (value) =>
-  value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 const getCustomerReceipts = async ({
   tenant,
@@ -697,10 +661,7 @@ const getCustomerReceipts = async ({
 
   const currentPage = Math.max(Math.floor(Number(page) || 1), 1);
 
-  const pageLimit = Math.min(
-    Math.max(Math.floor(Number(limit) || 20), 1),
-    100,
-  );
+  const pageLimit = Math.min(Math.max(Math.floor(Number(limit) || 20), 1), 100);
 
   const filter = { tenantId };
 
@@ -763,10 +724,7 @@ const getCustomerReceipts = async ({
   };
 };
 
-const getCustomerReceiptByNumber = async ({
-  tenant,
-  receiptNumber,
-}) => {
+const getCustomerReceiptByNumber = async ({ tenant, receiptNumber }) => {
   const connection = getReadyTenantConnection(tenant);
 
   const { CustomerReceipt } = getTenantAccountingModels(connection);
@@ -791,10 +749,7 @@ const getUnpaidSalesInvoices = async ({
 }) => {
   const connection = getReadyTenantConnection(tenant);
 
-  const {
-    Customer,
-    SalesInvoice,
-  } = getTenantAccountingModels(connection);
+  const { Customer, SalesInvoice } = getTenantAccountingModels(connection);
 
   const tenantId = tenant._id;
 
