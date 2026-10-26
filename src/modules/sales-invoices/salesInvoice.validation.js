@@ -92,7 +92,12 @@ const listSalesInvoicesSchema = Joi.object({
   paymentStatus: Joi.string().valid("UNPAID", "PARTIALLY_PAID", "PAID"),
 
   fromDate: Joi.date().iso(),
-
+  ewayBillStatus: Joi.string().valid(
+    "PENDING",
+    "GENERATED",
+    "EXPIRED",
+    "CANCELLED",
+  ),
   toDate: Joi.date()
     .iso()
     .when("fromDate", {

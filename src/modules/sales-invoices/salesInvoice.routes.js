@@ -8,6 +8,7 @@ const {
   validateInvoiceOrderParams,
   validateInvoiceOrderBody,
 } = require("./salesInvoiceFromOrder.validation");
+const ewayBillRoutes = require("./ewayBill/ewayBill.routes");
 const {
   createSalesInvoice,
   getSalesInvoices,
@@ -92,5 +93,5 @@ router.post(
   validateInvoiceOrderBody,
   createFromSalesOrder,
 );
-
+router.use("/number/:invoiceNumber/eway-bill", ewayBillRoutes);
 module.exports = router;

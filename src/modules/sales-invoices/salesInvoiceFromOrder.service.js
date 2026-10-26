@@ -7,7 +7,7 @@ const {
 const {
   getReadyTenantConnection,
 } = require("../../tenancy/tenantConnectionManager");
-
+const { isEwayBillRequired } = require("./ewayBill/ewayBill.rules");
 const { getNextSequence } = require("../../utils/sequenceGenerator");
 
 const ELIGIBLE_ORDER_STATUSES = ["CONFIRMED", "IN_PROGRESS", "COMPLETED"];
@@ -613,7 +613,7 @@ const createInvoiceFromSalesOrder = async ({
 
             items,
             ...totals,
-
+            ewayBillRequired: isEwayBillRequired({ items }),
             paidAmountPaise: 0,
 
             outstandingAmountPaise: totals.totalAmountPaise,
