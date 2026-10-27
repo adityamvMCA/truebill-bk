@@ -1,8 +1,87 @@
+// const express = require("express");
+
+// const {
+//   createProduct,
+//   importProducts,
+//   getProducts,
+//   getProductByCode,
+//   updateProduct,
+//   deleteProduct,
+// } = require("./product.controller");
+
+// const {
+//   validateCreateProduct,
+//   validateUpdateProduct,
+// } = require("./product.validation");
+
+// const verifyToken = require(
+//   "../../middleware/authMiddleware",
+// );
+
+// const resolveTenant = require(
+//   "../../middleware/tenantMiddleware",
+// );
+
+// const requirePermission = require(
+//   "../../middleware/permissionMiddleware",
+// );
+
+// const upload = require(
+//   "../../middleware/csvUploadMiddleware",
+// );
+
+// const router = express.Router();
+
+// router.use(
+//   verifyToken,
+//   resolveTenant,
+// );
+
+// router.get(
+//   "/",
+//   requirePermission("product.view"),
+//   getProducts,
+// );
+
+// router.post(
+//   "/",
+//   requirePermission("product.create"),
+//   validateCreateProduct,
+//   createProduct,
+// );
+
+// router.post(
+//   "/import",
+//   requirePermission("product.create"),
+//   upload.single("file"),
+//   importProducts,
+// );
+
+// router.get(
+//   "/code/:productCode",
+//   requirePermission("product.view"),
+//   getProductByCode,
+// );
+
+// router.put(
+//   "/code/:productCode",
+//   requirePermission("product.update"),
+//   validateUpdateProduct,
+//   updateProduct,
+// );
+
+// router.delete(
+//   "/code/:productCode",
+//   requirePermission("product.delete"),
+//   deleteProduct,
+// );
+
+// module.exports = router;
+
 const express = require("express");
 
 const {
   createProduct,
-  importProducts,
   getProducts,
   getProductByCode,
   updateProduct,
@@ -14,66 +93,53 @@ const {
   validateUpdateProduct,
 } = require("./product.validation");
 
-const verifyToken = require(
-  "../../middleware/authMiddleware",
-);
+const verifyToken = require("../../middleware/authMiddleware");
+const resolveTenant = require("../../middleware/tenantMiddleware");
+const requirePermission = require("../../middleware/permissionMiddleware");
+const { importProducts } = require("./product.import");
 
-const resolveTenant = require(
-  "../../middleware/tenantMiddleware",
-);
 
-const requirePermission = require(
-  "../../middleware/permissionMiddleware",
-);
-
-const upload = require(
-  "../../middleware/csvUploadMiddleware",
-);
 
 const router = express.Router();
 
-router.use(
-  verifyToken,
-  resolveTenant,
-);
+router.use(verifyToken, resolveTenant);
 
 router.get(
   "/",
   requirePermission("product.view"),
-  getProducts,
+  getProducts
 );
 
 router.post(
   "/",
   requirePermission("product.create"),
   validateCreateProduct,
-  createProduct,
+  createProduct
 );
 
 router.post(
   "/import",
   requirePermission("product.create"),
-  upload.single("file"),
-  importProducts,
+  importProducts
 );
 
 router.get(
   "/code/:productCode",
   requirePermission("product.view"),
-  getProductByCode,
+  getProductByCode
 );
 
 router.put(
   "/code/:productCode",
   requirePermission("product.update"),
   validateUpdateProduct,
-  updateProduct,
+  updateProduct
 );
 
 router.delete(
   "/code/:productCode",
   requirePermission("product.delete"),
-  deleteProduct,
+  deleteProduct
 );
 
 module.exports = router;
