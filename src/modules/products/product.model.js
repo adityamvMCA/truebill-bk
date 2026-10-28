@@ -216,11 +216,17 @@ productSchema.index(
   },
 );
 
+// productSchema.index({
+//   tenantId: 1,
+//   category: 1,
+//   status: 1,
+// });
+
 productSchema.index({
   tenantId: 1,
-  category: 1,
+  isDeleted: 1,
   status: 1,
+  name: 1,
 });
-
 module.exports =
   mongoose.models.Product || mongoose.model("Product", productSchema);
