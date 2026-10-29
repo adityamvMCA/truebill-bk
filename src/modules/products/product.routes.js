@@ -1,4 +1,3 @@
-
 const express = require("express");
 
 const {
@@ -7,6 +6,7 @@ const {
   getProductByCode,
   updateProduct,
   deleteProduct,
+  bulkActionProducts
 } = require("./product.controller");
 
 const {
@@ -19,48 +19,42 @@ const resolveTenant = require("../../middleware/tenantMiddleware");
 const requirePermission = require("../../middleware/permissionMiddleware");
 const { importProducts } = require("./product.import");
 
-
-
 const router = express.Router();
 
 router.use(verifyToken, resolveTenant);
 
-router.get(
-  "/",
-  requirePermission("product.view"),
-  getProducts
-);
+router.get("/", requirePermission("product.view"), getProducts);
 
 router.post(
   "/",
   requirePermission("product.create"),
   validateCreateProduct,
-  createProduct
+  createProduct,
 );
 
-router.post(
-  "/import",
-  requirePermission("product.create"),
-  importProducts
-);
+router.post("/import", requirePermission("product.create"), importProducts);
 
 router.get(
   "/code/:productCode",
   requirePermission("product.view"),
-  getProductByCode
+  getProductByCode,
 );
 
 router.put(
   "/code/:productCode",
   requirePermission("product.update"),
   validateUpdateProduct,
-  updateProduct
+  updateProduct,
 );
 
 router.delete(
   "/code/:productCode",
   requirePermission("product.delete"),
-  deleteProduct
+  deleteProduct,
 );
-
+router.post(
+  "/bulk-action",
+  requirePermission("product.update"),
+  bulkActionProducts,
+);
 module.exports = router;

@@ -137,7 +137,25 @@ const importProducts = async (req, res, next) => {
     return next(error);
   }
 };
+const bulkActionProducts = async (req, res, next) => {
+  try {
+    const result = await productService.bulkActionProducts({
+      tenant: req.tenant,
+      userId: req.user.userId,
+      productCodes: req.body.productCodes,
+      action: req.body.action,
+      ipAddress: req.ip,
+    });
 
+    return res.status(200).json({
+      success: true,
+      message: `${result.affectedCount} product(s) processed successfully`,
+      data: result,
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
 module.exports = {
   createProduct,
   getProducts,
@@ -145,4 +163,5 @@ module.exports = {
   updateProduct,
   deleteProduct,
   importProducts,
+  bulkActionProducts,
 };

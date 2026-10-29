@@ -5,4 +5,5 @@ module.exports = {
   listCategories: service.list,
   updateCategory: service.update,
   seedDefaults: service.seedDefaults,
+  bulkUpdateStatus: service.bulkUpdateStatus,
 };

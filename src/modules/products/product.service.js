@@ -876,16 +876,14 @@ const getProducts = async ({
     pageLimit > 100
   ) {
     throw createError(
-      "page must be a positive integer and limit must be between 1 and 100"
+      "page must be a positive integer and limit must be between 1 and 100",
     );
   }
 
   const skip = (currentPage - 1) * pageLimit;
 
   if (!Number.isSafeInteger(skip)) {
-    throw createError(
-      "Pagination offset exceeds the supported range"
-    );
+    throw createError("Pagination offset exceeds the supported range");
   }
 
   const baseFilter = {
@@ -896,9 +894,7 @@ const getProducts = async ({
   const filter = { ...baseFilter };
 
   if (status) {
-    const normalizedStatus = String(status)
-      .trim()
-      .toUpperCase();
+    const normalizedStatus = String(status).trim().toUpperCase();
 
     if (!PRODUCT_STATUS.includes(normalizedStatus)) {
       throw createError("Invalid product status");
@@ -908,9 +904,7 @@ const getProducts = async ({
   }
 
   if (type) {
-    const normalizedType = String(type)
-      .trim()
-      .toUpperCase();
+    const normalizedType = String(type).trim().toUpperCase();
 
     if (!PRODUCT_TYPES.includes(normalizedType)) {
       throw createError("Invalid product type");
@@ -928,14 +922,10 @@ const getProducts = async ({
     trackInventory !== null &&
     trackInventory !== ""
   ) {
-    const value = String(trackInventory)
-      .trim()
-      .toLowerCase();
+    const value = String(trackInventory).trim().toLowerCase();
 
     if (!["true", "false"].includes(value)) {
-      throw createError(
-        "trackInventory must be true or false"
-      );
+      throw createError("trackInventory must be true or false");
     }
 
     filter.trackInventory = value === "true";
@@ -944,10 +934,7 @@ const getProducts = async ({
   const searchText = normalizeText(search);
 
   if (searchText) {
-    const escaped = searchText.replace(
-      /[.*+?^${}()|[\]\\]/g,
-      "\\$&"
-    );
+    const escaped = searchText.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
     const regex = new RegExp(escaped, "i");
 
@@ -966,11 +953,7 @@ const getProducts = async ({
     baseFilter.$or = searchConditions;
   }
 
-  const [
-    data,
-    total,
-    aggregateCounts,
-  ] = await Promise.all([
+  const [data, total, aggregateCounts] = await Promise.all([
     models.Product.find(filter)
       .sort({
         createdAt: -1,
@@ -988,25 +971,11 @@ const getProducts = async ({
       },
       {
         $facet: {
-          all: [
-            { $count: "count" },
-          ],
-          active: [
-            { $match: { status: "ACTIVE" } },
-            { $count: "count" },
-          ],
-          inactive: [
-            { $match: { status: "INACTIVE" } },
-            { $count: "count" },
-          ],
-          goods: [
-            { $match: { type: "GOODS" } },
-            { $count: "count" },
-          ],
-          services: [
-            { $match: { type: "SERVICE" } },
-            { $count: "count" },
-          ],
+          all: [{ $count: "count" }],
+          active: [{ $match: { status: "ACTIVE" } }, { $count: "count" }],
+          inactive: [{ $match: { status: "INACTIVE" } }, { $count: "count" }],
+          goods: [{ $match: { type: "GOODS" } }, { $count: "count" }],
+          services: [{ $match: { type: "SERVICE" } }, { $count: "count" }],
         },
       },
     ]),
@@ -1014,8 +983,7 @@ const getProducts = async ({
 
   const result = aggregateCounts[0] || {};
 
-  const readCount = (key) =>
-    Number(result[key]?.[0]?.count || 0);
+  const readCount = (key) => Number(result[key]?.[0]?.count || 0);
 
   return {
     data,
@@ -1293,6 +1261,111 @@ const deleteProduct = async ({ tenant, userId, productCode, ipAddress }) =>
     },
   );
 
+const bulkActionProducts = async ({
+  tenant,
+  userId,
+  productCodes,
+  action,
+  ipAddress,
+}) =>
+  runTransaction({ tenant, userId }, async (context) => {
+    if (!["ACTIVE", "INACTIVE", "DELETE"].includes(action)) {
+      throw createError("Action must be ACTIVE, INACTIVE, or DELETE");
+    }
+
+    if (!Array.isArray(productCodes) || productCodes.length === 0) {
+      throw createError("Select at least one product");
+    }
+
+    if (productCodes.length > 500) {
+      throw createError("Maximum 500 products per bulk action");
+    }
+
+    const codes = [...new Set(productCodes.map(requireProductCode))];
+
+    const { Product, AuditLog } = context.models;
+
+    const products = await Product.find({
+      tenantId: context.tenantId,
+      productCode: { $in: codes },
+      isDeleted: false,
+    })
+      .session(context.session)
+      .lean();
+
+    if (products.length !== codes.length) {
+      throw createError(
+        "Some selected products were not found or were already deleted. Refresh and try again.",
+        409,
+      );
+    }
+
+    const now = new Date();
+
+    const operations = [];
+    const auditEntries = [];
+
+    for (const product of products) {
+      const oldData = { ...product };
+      const isDelete = action === "DELETE";
+
+      const update = isDelete
+        ? {
+            status: "INACTIVE",
+            isDeleted: true,
+            deletedAt: now,
+            deletedBy: context.userId,
+          }
+        : {
+            status: action,
+          };
+
+      operations.push({
+        updateOne: {
+          filter: {
+            _id: product._id,
+            tenantId: context.tenantId,
+            isDeleted: false,
+          },
+          update: {
+            $set: update,
+          },
+        },
+      });
+
+      auditEntries.push({
+        tenantId: context.tenantId,
+        userId: context.userId,
+        action: isDelete ? "DELETE" : "UPDATE",
+        module: "PRODUCT",
+        documentId: product._id,
+        oldData,
+        newData: {
+          ...oldData,
+          ...update,
+          updatedAt: now,
+        },
+        ipAddress,
+      });
+    }
+
+    await Product.bulkWrite(operations, {
+      session: context.session,
+      ordered: true,
+    });
+
+    await AuditLog.insertMany(auditEntries, {
+      session: context.session,
+      ordered: true,
+    });
+
+    return {
+      success: true,
+      action,
+      affectedCount: products.length,
+    };
+  });
+
 module.exports = {
   createProduct,
   importProducts,
@@ -1300,4 +1373,5 @@ module.exports = {
   getProductByCode,
   updateProduct,
   deleteProduct,
+  bulkActionProducts,
 };
