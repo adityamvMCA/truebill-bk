@@ -40,9 +40,8 @@ router.post(
   "/import",
   requirePermission("hsn.create"),
   upload.single("file"),
-  controller.importCodes,
+  controller.importCodes
 );
-
 router.get(
   "/:code",
   requirePermission("hsn.view"),
@@ -57,5 +56,10 @@ router.patch(
   validation.validateUpdate,
   controller.updateHsnSacCode,
 );
-
+router.patch(
+  "/bulk-status",
+  requirePermission("hsn.update"),
+  validation.validateBulkStatus,
+  controller.bulkUpdateStatus
+);
 module.exports = router;

@@ -10,6 +10,7 @@ const requirePermission = require("../../middleware/permissionMiddleware");
 const controller = require("./taxRate.controller");
 
 const validation = require("./taxRate.validation");
+const { importTaxRates } = require("./taxRate.import");
 
 const router = express.Router();
 
@@ -35,12 +36,24 @@ router.post(
   validation.validateCreate,
   controller.createTaxRate,
 );
-
 router.post(
   "/import",
   requirePermission("tax.create"),
-  upload.single("file"),
-  controller.importRates,
+  express.json({ limit: "5mb" }), // 5000 rows exceed the default 100kb limit
+  importTaxRates,
+);
+
+router.get(
+  "/counts",
+  requirePermission("tax.view"),
+  controller.getTaxRateCounts,
+);
+
+router.patch(
+  "/bulk-status",
+  requirePermission("tax.update"),
+  validation.validateBulkStatus,
+  controller.bulkUpdateTaxRateStatus,
 );
 
 router.get(

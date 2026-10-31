@@ -113,4 +113,9 @@ warehouseSchema.index({
 });
 
 module.exports =
+  mongoose.models.Warehouse || warehouseSchema.index({ tenantId: 1, warehouseCode: 1, _id: 1 });
+warehouseSchema.index({ tenantId: 1, createdAt: 1, _id: 1 });
+warehouseSchema.index({ tenantId: 1, updatedAt: 1, _id: 1 });
+
+module.exports =
   mongoose.models.Warehouse || mongoose.model("Warehouse", warehouseSchema);

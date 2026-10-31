@@ -13,25 +13,28 @@ const createError = (message, statusCode = 400) => {
 };
 
 const normalizeText = (value) =>
-  String(value ?? "")
-    .trim()
-    .replace(/\s+/g, " ");
+  String(value ?? "").trim().replace(/\s+/g, " ");
 
 const roundAmount = (value) => Math.round(Number(value) * 100) / 100;
 
 const resolveContext = (tenant) => {
   const connection = getReadyTenantConnection(tenant);
-
   const models = getTenantAccountingModels(connection);
 
   if (!models.Product || models.Product.db !== connection) {
     throw createError("Invalid tenant Product model", 500);
   }
 
-  return {
-    models,
-    tenantId: tenant._id,
-  };
+  return { models, tenantId: tenant._id };
+};
+
+const SORTS = {
+  productCode: (d) => ({ productCode: d, _id: d }),
+  name: (d) => ({ name: d, _id: d }),
+  brand: (d) => ({ brand: d, name: d, _id: d }),
+  unit: (d) => ({ unit: d, name: d, _id: d }),
+  currentStock: (d) => ({ currentStock: d, name: d, _id: d }),
+  category: (d) => ({ category: d, name: d, _id: d }),
 };
 
 const buildFilter = ({ tenantId, category, brand, search }) => {
@@ -51,18 +54,14 @@ const buildFilter = ({ tenantId, category, brand, search }) => {
     filter.brand = normalizeText(brand);
   }
 
-  const searchText = normalizeText(search);
+  const searchText = normalizeText(search).toLowerCase();
 
   if (searchText) {
     const escaped = searchText.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-    const regex = new RegExp(escaped, "i");
-
     filter.$or = [
-      { name: regex },
-      { productCode: regex },
-      { category: regex },
-      { brand: regex },
+      { productCode: { $regex: `^${escaped}`, $options: "i" } },
+      { name: { $regex: `^${escaped}`, $options: "i" } },
     ];
   }
 
@@ -76,35 +75,31 @@ const getStockValuation = async ({
   search = "",
   page = 1,
   limit = 20,
+  sortBy = "",
+  sortDir = "",
 }) => {
   const { models, tenantId } = resolveContext(tenant);
-
   const { Product } = models;
 
   const currentPage = Math.max(Math.floor(Number(page) || 1), 1);
-
   const pageLimit = Math.min(Math.max(Math.floor(Number(limit) || 20), 1), 100);
-
   const skip = (currentPage - 1) * pageLimit;
 
   if (!Number.isSafeInteger(skip)) {
     throw createError("Pagination offset exceeds the supported range");
   }
 
-  const filter = buildFilter({
-    tenantId,
-    category,
-    brand,
-    search,
-  });
+  const filter = buildFilter({ tenantId, category, brand, search });
+
+  const direction = sortDir === "desc" ? -1 : 1;
+
+  const sort = SORTS[sortBy]
+    ? SORTS[sortBy](direction)
+    : { category: 1, name: 1, _id: 1 };
 
   const [products, aggregate] = await Promise.all([
     Product.find(filter)
-      .sort({
-        category: 1,
-        name: 1,
-        _id: 1,
-      })
+      .sort(sort)
       .skip(skip)
       .limit(pageLimit)
       .select(
@@ -113,76 +108,79 @@ const getStockValuation = async ({
       .lean(),
 
     Product.aggregate([
-      {
-        $match: filter,
-      },
+      { $match: filter },
       {
         $addFields: {
           stockValue: {
-            $round: [
-              {
-                $multiply: ["$currentStock", "$purchasePrice"],
-              },
-              2,
-            ],
+            $round: [{ $multiply: ["$currentStock", "$purchasePrice"] }, 2],
           },
         },
       },
       {
-        $group: {
-          _id: null,
-
-          totalProducts: {
-            $sum: 1,
-          },
-
-          totalQuantity: {
-            $sum: "$currentStock",
-          },
-
-          totalStockValue: {
-            $sum: "$stockValue",
-          },
+        $facet: {
+          totals: [
+            {
+              $group: {
+                _id: null,
+                totalProducts: { $sum: 1 },
+                totalQuantity: { $sum: "$currentStock" },
+                totalStockValue: { $sum: "$stockValue" },
+                inStockProducts: {
+                  $sum: {
+                    $cond: [{ $gt: ["$currentStock", 0] }, 1, 0],
+                  },
+                },
+                unvaluedProducts: {
+                  $sum: {
+                    $cond: [
+                      {
+                        $or: [
+                          { $eq: ["$purchasePrice", null] },
+                          { $eq: ["$purchasePrice", 0] },
+                        ],
+                      },
+                      1,
+                      0,
+                    ],
+                  },
+                },
+              },
+            },
+          ],
         },
       },
     ]),
   ]);
 
-  const summary = aggregate[0] ?? {
+  const summary = aggregate?.[0]?.totals?.[0] ?? {
     totalProducts: 0,
     totalQuantity: 0,
     totalStockValue: 0,
+    inStockProducts: 0,
+    unvaluedProducts: 0,
   };
 
   const enrichedProducts = products.map((product) => {
     const currentStock = Number(product.currentStock) || 0;
-
     const purchasePrice = Number(product.purchasePrice) || 0;
-
     const stockValue = roundAmount(currentStock * purchasePrice);
 
-    return {
-      ...product,
-      stockValue,
-    };
+    return { ...product, stockValue };
   });
 
   return {
     data: enrichedProducts,
-
     summary: {
       totalProducts: summary.totalProducts,
-
       totalQuantity: roundAmount(summary.totalQuantity),
-
       totalStockValue: roundAmount(summary.totalStockValue),
+      inStockProducts: summary.inStockProducts,
+      unvaluedProducts: summary.unvaluedProducts,
     },
-
     pagination: {
       page: currentPage,
       limit: pageLimit,
       total: summary.totalProducts,
-
       totalPages: Math.ceil(summary.totalProducts / pageLimit),
     },
   };
@@ -190,7 +188,6 @@ const getStockValuation = async ({
 
 const getCategoryValuation = async ({ tenant }) => {
   const { models, tenantId } = resolveContext(tenant);
-
   const { Product } = models;
 
   const results = await Product.aggregate([
@@ -203,38 +200,21 @@ const getCategoryValuation = async ({ tenant }) => {
         trackInventory: true,
       },
     },
-
     {
       $addFields: {
         stockValue: {
-          $round: [
-            {
-              $multiply: ["$currentStock", "$purchasePrice"],
-            },
-            2,
-          ],
+          $round: [{ $multiply: ["$currentStock", "$purchasePrice"] }, 2],
         },
       },
     },
-
     {
       $group: {
         _id: "$category",
-
-        productCount: {
-          $sum: 1,
-        },
-
-        totalQuantity: {
-          $sum: "$currentStock",
-        },
-
-        totalStockValue: {
-          $sum: "$stockValue",
-        },
+        productCount: { $sum: 1 },
+        totalQuantity: { $sum: "$currentStock" },
+        totalStockValue: { $sum: "$stockValue" },
       },
     },
-
     {
       $project: {
         _id: 0,
@@ -244,12 +224,8 @@ const getCategoryValuation = async ({ tenant }) => {
         totalStockValue: 1,
       },
     },
-
     {
-      $sort: {
-        totalStockValue: -1,
-        category: 1,
-      },
+      $sort: { totalStockValue: -1, category: 1 },
     },
   ]);
 

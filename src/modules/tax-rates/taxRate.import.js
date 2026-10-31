@@ -20,7 +20,7 @@ const importTaxRates = createBulkImportHandler({
   chunkSize: 500,
   schema: createTaxRateSchema,
 
-  uniqueFields: ["name", "rate"],
+  uniqueFields: ["name",],
 
   baseFilter: {},
 

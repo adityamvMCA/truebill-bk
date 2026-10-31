@@ -125,6 +125,26 @@ const listWarehouses = async (req, res, next) => {
   }
 };
 
+const getWarehouseCounts = async (req, res, next) => {
+  try {
+    const counts = await service.getWarehouseCounts({ tenant: req.tenant });
+
+    return res.status(200).json({ success: true, counts });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+const bulkUpdateWarehouseStatus = async (req, res, next) => {
+  try {
+    const result = await service.bulkUpdateStatus(getContext(req));
+
+    return res.status(200).json({ success: true, ...result });
+  } catch (error) {
+    return next(error);
+  }
+};
+
 const getWarehouse = async (req, res, next) => {
   try {
     const data = await service.getWarehouse(getContext(req));
@@ -175,4 +195,6 @@ module.exports = {
   getInventorySettings,
   setupWarehouses,
   initializeStock,
+  getWarehouseCounts,
+  bulkUpdateWarehouseStatus,
 };

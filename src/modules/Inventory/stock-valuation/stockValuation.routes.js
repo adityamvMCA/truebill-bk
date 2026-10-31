@@ -8,9 +8,7 @@ const {
 } = require("./stockValuation.controller");
 
 const verifyToken = require("../../../middleware/authMiddleware");
-
 const resolveTenant = require("../../../middleware/tenantMiddleware");
-
 const requirePermission = require("../../../middleware/permissionMiddleware");
 
 const router = express.Router();
@@ -24,7 +22,13 @@ const listSchema = Joi.object({
 
   page: Joi.number().integer().min(1).max(100000).default(1),
 
-  limit: Joi.number().integer().min(1).max(100).default(20),
+  limit: Joi.number().integer().valid(20, 50, 100).default(20),
+
+  sortBy: Joi.string()
+    .valid("productCode", "name", "brand", "unit", "currentStock", "category")
+    .allow(""),
+
+  sortDir: Joi.string().valid("asc", "desc").allow(""),
 }).unknown(false);
 
 const validateList = (req, res, next) => {
@@ -38,7 +42,6 @@ const validateList = (req, res, next) => {
     return res.status(400).json({
       success: false,
       message: "Validation failed",
-
       errors: error.details.map((detail) => detail.message),
     });
   }

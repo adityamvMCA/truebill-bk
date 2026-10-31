@@ -40,6 +40,19 @@ router.post(
 );
 
 router.get(
+  "/counts",
+  requirePermission("warehouse.view"),
+  controller.getWarehouseCounts,
+);
+
+router.patch(
+  "/bulk-status",
+  requirePermission("warehouse.update"),
+  validation.validateBulkStatus,
+  controller.bulkUpdateWarehouseStatus,
+);
+
+router.get(
   "/:warehouseCode",
   requirePermission("warehouse.view"),
   validation.validateParams,

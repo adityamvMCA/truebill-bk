@@ -249,12 +249,30 @@ const listHsnSacCodes = async (args) => {
     filter.$or = [{ code: regex }, { description: regex }];
   }
 
+  const allowedSortFields = [
+    "code",
+    "description",
+    "defaultGstRate",
+    "status",
+    "createdAt",
+    "updatedAt",
+  ];
+
+  const sortBy = allowedSortFields.includes(args.sortBy) ? args.sortBy : "code";
+
+  const sortOrder = args.sortOrder === "desc" ? -1 : 1;
+
+  const sort = {
+    [sortBy]: sortOrder,
+    _id: sortOrder,
+  };
+
   const [data, total] = await Promise.all([
     models.HsnSacCode.find(filter)
-      .sort({
-        code: 1,
-        _id: 1,
-      })
+      .select(
+        "_id code description defaultGstRate status createdAt updatedAt __v",
+      )
+      .sort(sort)
       .skip(skip)
       .limit(limit)
       .lean(),
@@ -314,9 +332,159 @@ const updateHsnSacCode = (args) =>
     return record.toObject();
   });
 
+const bulkUpdateHsnSacCodeStatus = (args) =>
+  transaction(args, async (context) => {
+    const payload = args.payload || {};
+    const { records, status } = payload;
+
+    if (!["ACTIVE", "INACTIVE"].includes(status)) {
+      throw createError("Invalid HSN/SAC status");
+    }
+
+    if (!Array.isArray(records) || records.length < 1 || records.length > 100) {
+      throw createError("Select between 1 and 100 HSN/SAC codes");
+    }
+
+    const uniqueIds = new Set();
+
+    for (const item of records) {
+      if (!item || !/^[a-fA-F0-9]{24}$/.test(String(item._id || ""))) {
+        throw createError("Invalid HSN/SAC record ID");
+      }
+
+      if (!Number.isSafeInteger(item.version) || item.version < 0) {
+        throw createError(
+          "A valid version is required for every selected record",
+        );
+      }
+
+      const id = String(item._id);
+
+      if (uniqueIds.has(id)) {
+        throw createError("Duplicate HSN/SAC record selected");
+      }
+
+      uniqueIds.add(id);
+    }
+
+    const ids = records.map((item) => item._id);
+
+    const currentRecords = await context.models.HsnSacCode.find({
+      tenantId: context.tenantId,
+      _id: { $in: ids },
+    }).session(context.session);
+
+    if (currentRecords.length !== records.length) {
+      throw createError(
+        "One or more selected HSN/SAC codes were not found",
+        404,
+      );
+    }
+
+    const requestedVersions = new Map(
+      records.map((item) => [String(item._id), item.version]),
+    );
+
+    // Validate every version before changing any record.
+    for (const record of currentRecords) {
+      const requestedVersion = requestedVersions.get(String(record._id));
+
+      if (record.__v !== requestedVersion) {
+        throw createError(
+          `HSN/SAC code ${record.code} has changed. Refresh and try again.`,
+          409,
+        );
+      }
+    }
+
+    const changedRecords = currentRecords.filter(
+      (record) => record.status !== status,
+    );
+
+    if (!changedRecords.length) {
+      return {
+        status,
+        requestedCount: records.length,
+        affectedCount: 0,
+        unchangedCount: records.length,
+      };
+    }
+
+    const now = new Date();
+
+    const operations = changedRecords.map((record) => ({
+      updateOne: {
+        filter: {
+          _id: record._id,
+          tenantId: context.tenantId,
+          __v: record.__v,
+        },
+        update: {
+          $set: {
+            status,
+            updatedBy: context.userId,
+            updatedAt: now,
+          },
+          $inc: {
+            __v: 1,
+          },
+        },
+      },
+    }));
+
+    const result = await context.models.HsnSacCode.bulkWrite(operations, {
+      session: context.session,
+      ordered: true,
+    });
+
+    if (result.modifiedCount !== changedRecords.length) {
+      throw createError(
+        "Some HSN/SAC codes changed during the operation. Please refresh.",
+        409,
+      );
+    }
+
+    // One audit entry for each changed record.
+    const auditRecords = changedRecords.map((record) => {
+      const oldData = record.toObject();
+
+      const newData = {
+        ...oldData,
+        status,
+        updatedBy: context.userId,
+        updatedAt: now,
+        __v: record.__v + 1,
+      };
+
+      return {
+        tenantId: context.tenantId,
+        userId: context.userId,
+        action: "UPDATE",
+        module: "HSN_SAC_CODE",
+        documentId: record._id,
+        oldData,
+        newData,
+        ipAddress: context.ipAddress,
+      };
+    });
+
+    await context.models.AuditLog.insertMany(auditRecords, {
+      session: context.session,
+      ordered: true,
+    });
+
+    return {
+      status,
+      requestedCount: records.length,
+      affectedCount: changedRecords.length,
+      unchangedCount: records.length - changedRecords.length,
+    };
+  });
+
 module.exports = {
   createHsnSacCode,
   getHsnSacCode,
   listHsnSacCodes,
   updateHsnSacCode,
+  bulkUpdateHsnSacCodeStatus,
 };

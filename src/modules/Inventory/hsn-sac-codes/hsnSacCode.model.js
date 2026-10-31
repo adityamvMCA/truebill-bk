@@ -80,6 +80,25 @@ hsnSacCodeSchema.index({
   code: 1,
   _id: 1,
 });
+hsnSacCodeSchema.index({
+  tenantId: 1,
+  description: 1,
+  _id: 1,
+});
+
+hsnSacCodeSchema.index({
+  tenantId: 1,
+  status: 1,
+  createdAt: -1,
+  _id: -1,
+});
+
+hsnSacCodeSchema.index({
+  tenantId: 1,
+  status: 1,
+  updatedAt: -1,
+  _id: -1,
+});
 
 module.exports =
   mongoose.models.HsnSacCode || mongoose.model("HsnSacCode", hsnSacCodeSchema);

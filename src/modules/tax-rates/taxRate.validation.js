@@ -51,7 +51,24 @@ const listSchema = Joi.object({
   taxType,
   page: Joi.number().integer().min(1).max(100000).default(1),
 
-  limit: Joi.number().integer().min(1).max(100).default(20),
+  limit: Joi.number().integer().valid(20, 50, 100).default(20),
+
+  sortBy: Joi.string()
+    .valid("name", "rate", "taxType", "status", "createdAt", "updatedAt")
+    .allow(""),
+
+  sortDir: Joi.string().valid("asc", "desc").allow(""),
+}).unknown(false);
+
+const bulkStatusSchema = Joi.object({
+  ids: Joi.array()
+    .items(Joi.string().trim().pattern(/^[a-f\d]{24}$/i))
+    .min(1)
+    .max(1000)
+    .unique()
+    .required(),
+
+  status: status.required(),
 }).unknown(false);
 
 const createTaxRateSchema = Joi.object({
@@ -94,5 +111,6 @@ module.exports = {
   validateUpdate: validate(updateSchema),
   validateParams: validate(paramsSchema, "params"),
   validateList: validate(listSchema, "query"),
+  validateBulkStatus: validate(bulkStatusSchema),
   createTaxRateSchema,
 };

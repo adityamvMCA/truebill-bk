@@ -41,13 +41,42 @@ const paramsSchema = Joi.object({
 }).unknown(false);
 
 const listSchema = Joi.object({
-  search: Joi.string().trim().max(100).allow("").default(""),
+  search: Joi.string()
+    .trim()
+    .max(100)
+    .allow("")
+    .default(""),
 
   status,
-  page: Joi.number().integer().min(1).max(100000).default(1),
 
-  limit: Joi.number().integer().min(1).max(100).default(20),
+  page: Joi.number()
+    .integer()
+    .min(1)
+    .max(100000)
+    .default(1),
+
+  limit: Joi.number()
+    .integer()
+    .min(1)
+    .max(100)
+    .default(20),
+
+  sortBy: Joi.string()
+    .valid(
+      "code",
+      "description",
+      "defaultGstRate",
+      "status",
+      "createdAt",
+      "updatedAt"
+    )
+    .default("code"),
+
+  sortOrder: Joi.string()
+    .valid("asc", "desc")
+    .default("asc"),
 }).unknown(false);
+
 
 const createImportSchema = Joi.object({
   code: code.required(),
@@ -83,10 +112,36 @@ const validate =
     return next();
   };
 
+  const bulkStatusSchema = Joi.object({
+  status: status.required(),
+
+  records: Joi.array()
+    .items(
+      Joi.object({
+        _id: Joi.string()
+          .hex()
+          .length(24)
+          .required(),
+
+        version: Joi.number()
+          .integer()
+          .min(0)
+          .max(Number.MAX_SAFE_INTEGER)
+          .strict()
+          .required(),
+      }).unknown(false)
+    )
+    .min(1)
+    .max(100)
+    .unique((a, b) => a._id === b._id)
+    .required(),
+}).unknown(false);
+
 module.exports = {
   validateCreate: validate(createSchema),
   validateUpdate: validate(updateSchema),
   validateParams: validate(paramsSchema, "params"),
   validateList: validate(listSchema, "query"),
   createHsnSacCodeSchema: createImportSchema,
+  validateBulkStatus: validate(bulkStatusSchema),
 };

@@ -213,6 +213,15 @@ const getTaxRate = async (args) => {
   return taxRate.toObject();
 };
 
+const SORTS = {
+  name: (d) => ({ normalizedName: d }),
+  rate: (d) => ({ rate: d, _id: d }),
+  taxType: (d) => ({ taxType: d, rate: d, _id: d }),
+  status: (d) => ({ status: d, taxType: d, rate: d, _id: d }),
+  createdAt: (d) => ({ createdAt: d, _id: d }),
+  updatedAt: (d) => ({ updatedAt: d, _id: d }),
+};
+
 const listTaxRates = async (args) => {
   const { models, tenantId } = resolveContext(args);
 
@@ -253,26 +262,23 @@ const listTaxRates = async (args) => {
     filter.taxType = args.taxType;
   }
 
-  const search = String(args.search ?? "").trim();
+  const search = normalizeName(args.search).toLowerCase();
 
   if (search) {
     const escaped = search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-    const regex = new RegExp(escaped, "i");
-
-    filter.$or = [{ name: regex }, { description: regex }];
+    // Anchored prefix on the lowercase field: uses the {tenantId, normalizedName} index
+    filter.normalizedName = { $regex: `^${escaped}` };
   }
 
+  const direction = args.sortDir === "desc" ? -1 : 1;
+
+  const sort = SORTS[args.sortBy]
+    ? SORTS[args.sortBy](direction)
+    : { taxType: 1, rate: 1, _id: 1 };
+
   const [data, total] = await Promise.all([
-    models.TaxRate.find(filter)
-      .sort({
-        taxType: 1,
-        rate: 1,
-        _id: 1,
-      })
-      .skip(skip)
-      .limit(limit)
-      .lean(),
+    models.TaxRate.find(filter).sort(sort).skip(skip).limit(limit).lean(),
 
     models.TaxRate.countDocuments(filter),
   ]);
@@ -287,6 +293,112 @@ const listTaxRates = async (args) => {
     },
   };
 };
+
+const getTaxRateCounts = async (args) => {
+  const { models, tenantId } = resolveContext(args);
+
+  const [result] = await models.TaxRate.aggregate([
+    { $match: { tenantId } },
+    {
+      $facet: {
+        status: [{ $group: { _id: "$status", count: { $sum: 1 } } }],
+        taxTypes: [{ $group: { _id: "$taxType", count: { $sum: 1 } } }],
+      },
+    },
+  ]);
+
+  const status = Object.fromEntries(
+    (result?.status ?? []).map((item) => [item._id, item.count]),
+  );
+
+  const taxTypes = Object.fromEntries(
+    (result?.taxTypes ?? []).map((item) => [item._id, item.count]),
+  );
+
+  const active = status.ACTIVE ?? 0;
+  const inactive = status.INACTIVE ?? 0;
+
+  return {
+    total: active + inactive,
+    active,
+    inactive,
+    taxTypes: { GST: 0, VAT: 0, CUSTOM: 0, ...taxTypes },
+  };
+};
+
+const bulkUpdateStatus = (args) =>
+  transaction(args, async (context) => {
+    const { ids, status } = args.payload || {};
+
+    if (!["ACTIVE", "INACTIVE"].includes(status)) {
+      throw createError("Invalid tax rate status");
+    }
+
+    if (!Array.isArray(ids) || !ids.length || ids.length > 1000) {
+      throw createError("Provide between 1 and 1000 tax rate IDs");
+    }
+
+    const objectIds = [...new Set(ids.map((id) => String(id)))].map((id) =>
+      objectId(id, "taxRateId"),
+    );
+
+    const existing = await context.models.TaxRate.find({
+      tenantId: context.tenantId,
+      _id: { $in: objectIds },
+    })
+      .session(context.session)
+      .lean();
+
+    const changing = existing.filter((item) => item.status !== status);
+
+    if (changing.length) {
+      const result = await context.models.TaxRate.updateMany(
+        {
+          tenantId: context.tenantId,
+          _id: { $in: changing.map((item) => item._id) },
+          status: { $ne: status },
+        },
+        {
+          $set: { status, updatedBy: context.userId },
+          $inc: { __v: 1 },
+        },
+        { session: context.session },
+      );
+
+      if (result.modifiedCount !== changing.length) {
+        throw createError("Tax rates changed. Reload before continuing.", 409);
+      }
+
+      const now = new Date();
+
+      await context.models.AuditLog.insertMany(
+        changing.map((oldData) => ({
+          tenantId: context.tenantId,
+          userId: context.userId,
+          action: "UPDATE",
+          module: "TAX_RATE",
+          documentId: oldData._id,
+          oldData,
+          newData: {
+            ...oldData,
+            status,
+            updatedBy: context.userId,
+            updatedAt: now,
+            __v: (oldData.__v ?? 0) + 1,
+          },
+          ipAddress: context.ipAddress,
+        })),
+        { session: context.session },
+      );
+    }
+
+    return {
+      matchedCount: existing.length,
+      modifiedCount: changing.length,
+      skippedCount: existing.length - changing.length,
+      notFoundCount: objectIds.length - existing.length,
+    };
+  });
 
 const updateTaxRate = (args) =>
   transaction(args, async (context) => {
@@ -337,5 +449,7 @@ module.exports = {
   createTaxRate,
   getTaxRate,
   listTaxRates,
+  getTaxRateCounts,
+  bulkUpdateStatus,
   updateTaxRate,
 };

@@ -68,6 +68,26 @@ const updateTaxRate = async (req, res, next) => {
   }
 };
 
+const getTaxRateCounts = async (req, res, next) => {
+  try {
+    const counts = await service.getTaxRateCounts({ tenant: req.tenant });
+
+    return res.status(200).json({ success: true, counts });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+const bulkUpdateTaxRateStatus = async (req, res, next) => {
+  try {
+    const result = await service.bulkUpdateStatus(getContext(req));
+
+    return res.status(200).json({ success: true, ...result });
+  } catch (error) {
+    return next(error);
+  }
+};
+
 const importRates = async (req, res, next) => {
   try {
     const result = await importTaxRates({
@@ -93,4 +113,6 @@ module.exports = {
   getTaxRate,
   updateTaxRate,
   importRates,
+  getTaxRateCounts,
+  bulkUpdateTaxRateStatus,
 };

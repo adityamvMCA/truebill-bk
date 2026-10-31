@@ -1,17 +1,21 @@
+
 const mongoose = require("mongoose");
 
 const {
   createBulkImportHandler,
 } = require("../../../utils/createBulkImportHandler");
 
-const { createHsnSacCodeSchema } = require("./hsnSacCode.validation");
+const {
+  createHsnSacCodeSchema,
+} = require("./hsnSacCode.validation");
 
 const normalizeCode = (value) =>
   String(value ?? "")
     .trim()
     .toUpperCase();
 
-const nullableText = (value) => String(value ?? "").trim() || null;
+const nullableText = (value) =>
+  String(value ?? "").trim() || null;
 
 const importHsnSacCodes = createBulkImportHandler({
   label: "HSN/SAC code",
@@ -24,13 +28,18 @@ const importHsnSacCodes = createBulkImportHandler({
 
   baseFilter: {},
 
+  // HSN/SAC codes come directly from the CSV.
+  // No sequence generation is required.
+  reserveCodes: async ({ count }) =>
+    Array(count).fill(null),
+
   transformRow: (row) => ({
     code: normalizeCode(
       row.code ??
         row.hsncode ??
         row.hsn_code ??
         row.hsnsaccode ??
-        row.hsn_sac_code,
+        row.hsn_sac_code
     ),
 
     description: nullableText(row.description),
@@ -41,7 +50,7 @@ const importHsnSacCodes = createBulkImportHandler({
           row.default_gst_rate ??
           row.gstrate ??
           row.gst_rate ??
-          0,
+          0
       ) || 0,
 
     status: String(row.status || "ACTIVE")
@@ -49,7 +58,13 @@ const importHsnSacCodes = createBulkImportHandler({
       .toUpperCase(),
   }),
 
-  buildChunk: ({ items, models, tenantId, userId, ipAddress }) => {
+  buildChunk: ({
+    items,
+    models,
+    tenantId,
+    userId,
+    ipAddress,
+  }) => {
     const records = [];
     const audits = [];
 
@@ -87,7 +102,6 @@ const importHsnSacCodes = createBulkImportHandler({
         model: models.HsnSacCode,
         docs: records,
       },
-
       {
         model: models.AuditLog,
         docs: audits,

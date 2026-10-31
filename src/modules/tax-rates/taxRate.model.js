@@ -110,5 +110,10 @@ taxRateSchema.index({
   _id: 1,
 });
 
+// Sort indexes (autoIndex is off: run TaxRate.syncIndexes() once per tenant DB)
+taxRateSchema.index({ tenantId: 1, rate: 1, _id: 1 });
+taxRateSchema.index({ tenantId: 1, createdAt: 1, _id: 1 });
+taxRateSchema.index({ tenantId: 1, updatedAt: 1, _id: 1 });
+
 module.exports =
   mongoose.models.TaxRate || mongoose.model("TaxRate", taxRateSchema);
