@@ -24,6 +24,22 @@ const writeHandler =
     }
   };
 
+// const listRfqs = async (req, res, next) => {
+//   try {
+//     const result = await service.listRfqs({
+//       ...req.validatedQuery,
+//       tenant: req.tenant,
+//     });
+
+//     return res.status(200).json({
+//       success: true,
+//       data: result.data,
+//       pagination: result.pagination,
+//     });
+//   } catch (error) {
+//     return next(error);
+//   }
+// };
 const listRfqs = async (req, res, next) => {
   try {
     const result = await service.listRfqs({
@@ -40,7 +56,6 @@ const listRfqs = async (req, res, next) => {
     return next(error);
   }
 };
-
 const getRfq = async (req, res, next) => {
   try {
     const data = await service.getRfq(getContext(req));

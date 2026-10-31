@@ -120,9 +120,37 @@ const validateCustomer = (schema) => (req, res, next) => {
   req.body = value;
   next();
 };
+const bulkStatusSchema = Joi.object({
+  ids: Joi.array()
+    .items(Joi.string().trim().pattern(/^[a-f\d]{24}$/i))
+    .min(1)
+    .max(1000)
+    .unique()
+    .required(),
+  status: Joi.string().valid("Active", "Inactive").required(),
+}).unknown(false);
 
+const validateBulkStatusCustomer = (req, res, next) => {
+  const { error, value } = bulkStatusSchema.validate(req.body, {
+    abortEarly: false,
+    stripUnknown: true,
+    convert: true,
+  });
+
+  if (error) {
+    return res.status(400).json({
+      success: false,
+      message: "Validation failed",
+      errors: error.details.map((detail) => detail.message),
+    });
+  }
+
+  req.body = value;
+  next();
+};
 module.exports = {
   createCustomerSchema,
+  validateBulkStatusCustomer,
   validateCreateCustomer: validateCustomer(createCustomerSchema),
   validateUpdateCustomer: validateCustomer(updateCustomerSchema),
 };

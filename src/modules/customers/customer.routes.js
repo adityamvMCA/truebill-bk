@@ -6,11 +6,13 @@ const {
   getCustomerById,
   updateCustomer,
   deleteCustomer,
+  bulkUpdateCustomerStatus,
 } = require("./customer.controller");
 
 const {
   validateCreateCustomer,
   validateUpdateCustomer,
+  validateBulkStatusCustomer,
 } = require("./customer.validation");
 
 const verifyToken = require("../../middleware/authMiddleware");
@@ -53,5 +55,11 @@ router.post(
   "/bulk-import",
   requirePermission("customer.create"),
   importCustomers,
+);
+router.patch(
+  "/bulk-status",
+  requirePermission("customer.update"),
+  validateBulkStatusCustomer,
+  bulkUpdateCustomerStatus
 );
 module.exports = router;

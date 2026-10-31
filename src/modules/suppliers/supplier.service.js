@@ -1,3 +1,5 @@
+
+
 // const {
 //   getTenantAccountingModels,
 // } = require("../../tenancy/tenantAccountingModels");
@@ -17,6 +19,85 @@
 //   INCOME: "CREDIT",
 //   EQUITY: "CREDIT",
 // };
+
+// /* ------------------------------------------------------------------ */
+// /* List helpers                                                        */
+// /* ------------------------------------------------------------------ */
+
+// const escapeRegex = (value) =>
+//   String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+// // Exact enum values so compound indexes can be used
+// const STATUS_MAP = { active: "Active", inactive: "Inactive" };
+// const TYPE_MAP = { business: "Business", individual: "Individual" };
+// const BALANCE_TYPE_MAP = { debit: "DEBIT", credit: "CREDIT" };
+
+// const SORTABLE_FIELDS = new Set([
+//   "supplierCode",
+//   "supplierName",
+//   "supplierType",
+//   "contactPerson",
+//   "phone",
+//   "email",
+//   "gstNo",
+//   "city",
+//   "state",
+//   "paymentTerms",
+//   "creditLimit",
+//   "creditDays",
+//   "payableBalance",
+//   "status",
+//   "createdAt",
+// ]);
+
+// const pick = (map, value) => map[String(value || "").trim().toLowerCase()];
+
+// const buildSupplierFilter = ({
+//   tenantId,
+//   search,
+//   status,
+//   supplierType,
+//   openingBalanceType,
+//   state,
+// }) => {
+//   const filter = { tenantId, isDeleted: false };
+
+//   const statusValue = pick(STATUS_MAP, status);
+//   const typeValue = pick(TYPE_MAP, supplierType);
+//   const balanceValue = pick(BALANCE_TYPE_MAP, openingBalanceType);
+
+//   if (statusValue) filter.status = statusValue;
+//   if (typeValue) filter.supplierType = typeValue;
+//   if (balanceValue) filter.openingBalanceType = balanceValue;
+
+//   const stateText = String(state || "").trim().slice(0, 60);
+//   if (stateText) {
+//     filter.state = new RegExp(`^${escapeRegex(stateText)}$`, "i");
+//   }
+
+//   const searchText = String(search || "").trim().slice(0, 100);
+
+//   if (searchText) {
+//     // Prefix match: much faster than "contains" and index friendly
+//     const prefix = new RegExp(`^${escapeRegex(searchText)}`, "i");
+
+//     filter.$or = [
+//       { supplierCode: prefix },
+//       { supplierName: prefix },
+//       { contactPerson: prefix },
+//       { phone: prefix },
+//       { email: prefix },
+//       { gstNo: prefix },
+//       { city: prefix },
+//     ];
+//   }
+
+//   return filter;
+// };
+
+// /* ------------------------------------------------------------------ */
+// /* Ledger helper                                                       */
+// /* ------------------------------------------------------------------ */
 
 // const createSupplierLedger = async ({
 //   models,
@@ -39,70 +120,45 @@
 //     const error = new Error(
 //       "Sundry Creditors ledger group is missing. Seed accounting groups before creating suppliers.",
 //     );
-
 //     error.statusCode = 400;
-
 //     throw error;
 //   }
 
-//   const normalBalance =
-//     NORMAL_BALANCE_BY_NATURE[sundryCreditorsGroup.nature];
+//   const normalBalance = NORMAL_BALANCE_BY_NATURE[sundryCreditorsGroup.nature];
 
 //   if (!normalBalance) {
 //     const error = new Error(
 //       "Sundry Creditors ledger group has an invalid account nature.",
 //     );
-
 //     error.statusCode = 400;
-
 //     throw error;
 //   }
 
 //   const ledgerCode = `SUPP-${supplier.supplierCode}`.toUpperCase();
-
 //   const openingBalance = Number(supplier.openingBalance) || 0;
 
 //   const ledgers = await Ledger.create(
 //     [
 //       {
 //         tenantId,
-
 //         ledgerGroupId: sundryCreditorsGroup._id,
-
 //         code: ledgerCode,
-
 //         name: supplier.supplierName,
-
 //         type: "SUPPLIER",
-
 //         nature: sundryCreditorsGroup.nature,
-
 //         normalBalance,
-
 //         openingBalance,
-
 //         openingBalanceType: supplier.openingBalanceType || normalBalance,
-
 //         currentBalance: openingBalance,
-
 //         currentBalanceType: supplier.openingBalanceType || normalBalance,
-
 //         referenceType: "SUPPLIER",
-
 //         referenceId: supplier._id,
-
 //         creditLimit: Number(supplier.creditLimit) || 0,
-
 //         creditDays: Number(supplier.creditDays) || 0,
-
 //         isSystem: false,
-
 //         isActive: supplier.status === "Active",
-
 //         description: `Supplier ledger for ${supplier.supplierName} (${supplier.supplierCode})`,
-
 //         createdBy: userId,
-
 //         updatedBy: userId,
 //       },
 //     ],
@@ -112,18 +168,14 @@
 //   return ledgers[0];
 // };
 
-// const createSupplier = async ({
-//   tenant,
-//   userId,
-//   payload,
-//   ipAddress,
-// }) => {
+// /* ------------------------------------------------------------------ */
+// /* Create                                                              */
+// /* ------------------------------------------------------------------ */
+
+// const createSupplier = async ({ tenant, userId, payload, ipAddress }) => {
 //   const connection = getReadyTenantConnection(tenant);
-
 //   const models = getTenantAccountingModels(connection);
-
 //   const { Supplier, AuditLog } = models;
-
 //   const tenantId = tenant._id;
 
 //   const session = await connection.startSession();
@@ -136,10 +188,7 @@
 //         "SU",
 //         tenantId.toString(),
 //         3,
-//         {
-//           connection,
-//           session,
-//         },
+//         { connection, session },
 //       );
 
 //       const supplierRecords = await Supplier.create(
@@ -148,7 +197,6 @@
 //             ...payload,
 //             supplierCode,
 //             tenantId,
-
 //             payableBalance:
 //               payload.openingBalanceType === "CREDIT"
 //                 ? Number(payload.openingBalance) || 0
@@ -190,24 +238,25 @@
 //       createdSupplier = supplier;
 //     });
 
-//     /*
-//       Keep this notification only if NEW_SUPPLIER
-//       exists in preferenceMap and preference schema.
-//     */
-//     await NotificationService.createForTenant({
-//       tenantId,
-//       type: "NEW_SUPPLIER",
-//       title: "New supplier created",
-//       message: `${createdSupplier.supplierName} (${createdSupplier.supplierCode}) was added successfully.`,
-//       icon: "truck",
-//       priority: "NORMAL",
-//       route: `/suppliers/code/${createdSupplier.supplierCode}`,
-//       data: {
-//         supplierId: createdSupplier._id.toString(),
-//         supplierCode: createdSupplier.supplierCode,
-//         ledgerId: createdSupplier.ledgerId?.toString() || null,
-//       },
-//     });
+//     // A notification failure must never fail a supplier that is already saved
+//     try {
+//       await NotificationService.createForTenant({
+//         tenantId,
+//         type: "NEW_SUPPLIER",
+//         title: "New supplier created",
+//         message: `${createdSupplier.supplierName} (${createdSupplier.supplierCode}) was added successfully.`,
+//         icon: "truck",
+//         priority: "NORMAL",
+//         route: `/suppliers/code/${createdSupplier.supplierCode}`,
+//         data: {
+//           supplierId: createdSupplier._id.toString(),
+//           supplierCode: createdSupplier.supplierCode,
+//           ledgerId: createdSupplier.ledgerId?.toString() || null,
+//         },
+//       });
+//     } catch (notificationError) {
+//       console.error("Supplier notification failed:", notificationError);
+//     }
 
 //     return createdSupplier;
 //   } finally {
@@ -215,66 +264,44 @@
 //   }
 // };
 
+// /* ------------------------------------------------------------------ */
+// /* List (server-side search / filter / sort / pagination)              */
+// /* ------------------------------------------------------------------ */
+
 // const getSuppliers = async ({
 //   tenant,
 //   search = "",
 //   status,
+//   supplierType,
+//   openingBalanceType,
+//   state,
+//   sortBy,
+//   sortOrder,
 //   page = 1,
 //   limit = 20,
 // }) => {
 //   const connection = getReadyTenantConnection(tenant);
-
 //   const { Supplier } = getTenantAccountingModels(connection);
 
-//   const tenantId = tenant._id;
+//   const currentPage = Math.max(parseInt(page, 10) || 1, 1);
+//   const pageLimit = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 100);
 
-//   const currentPage = Math.max(Number(page) || 1, 1);
+//   const filter = buildSupplierFilter({
+//     tenantId: tenant._id,
+//     search,
+//     status,
+//     supplierType,
+//     openingBalanceType,
+//     state,
+//   });
 
-//   const pageLimit = Math.min(Math.max(Number(limit) || 20, 1), 100);
-
-//   const filter = {
-//     tenantId,
-//     isDeleted: false,
-//   };
-
-//   if (status) {
-//     filter.status = status;
-//   }
-
-//   const searchText = String(search || "").trim();
-
-//   if (searchText) {
-//     filter.$or = [
-//       {
-//         supplierName: {
-//           $regex: searchText,
-//           $options: "i",
-//         },
-//       },
-//       {
-//         supplierCode: {
-//           $regex: searchText,
-//           $options: "i",
-//         },
-//       },
-//       {
-//         phone: {
-//           $regex: searchText,
-//           $options: "i",
-//         },
-//       },
-//       {
-//         email: {
-//           $regex: searchText,
-//           $options: "i",
-//         },
-//       },
-//     ];
-//   }
+//   const sortField = SORTABLE_FIELDS.has(sortBy) ? sortBy : "createdAt";
+//   const sortDirection = sortOrder === "asc" ? 1 : -1;
 
 //   const [data, total] = await Promise.all([
 //     Supplier.find(filter)
-//       .sort({ createdAt: -1 })
+//       .select("-notes -deletedAt -deletedBy -__v")
+//       .sort({ [sortField]: sortDirection, _id: -1 })
 //       .skip((currentPage - 1) * pageLimit)
 //       .limit(pageLimit)
 //       .lean(),
@@ -288,26 +315,61 @@
 //       page: currentPage,
 //       limit: pageLimit,
 //       total,
-//       totalPages: Math.ceil(total / pageLimit),
+//       totalPages: Math.max(1, Math.ceil(total / pageLimit)),
 //     },
 //   };
 // };
 
-// const getSupplierByCode = async ({
-//   tenant,
-//   supplierCode,
-// }) => {
-//   const connection = getReadyTenantConnection(tenant);
+// /* ------------------------------------------------------------------ */
+// /* Stats for quick-filter chips                                        */
+// /* ------------------------------------------------------------------ */
 
+// const getSupplierStats = async ({ tenant }) => {
+//   const connection = getReadyTenantConnection(tenant);
 //   const { Supplier } = getTenantAccountingModels(connection);
 
-//   const tenantId = tenant._id;
+//   const [row] = await Supplier.aggregate([
+//     { $match: { tenantId: tenant._id, isDeleted: false } },
+//     {
+//       $group: {
+//         _id: null,
+//         all: { $sum: 1 },
+//         active: { $sum: { $cond: [{ $eq: ["$status", "Active"] }, 1, 0] } },
+//         inactive: {
+//           $sum: { $cond: [{ $eq: ["$status", "Inactive"] }, 1, 0] },
+//         },
+//         business: {
+//           $sum: { $cond: [{ $eq: ["$supplierType", "Business"] }, 1, 0] },
+//         },
+//         individual: {
+//           $sum: { $cond: [{ $eq: ["$supplierType", "Individual"] }, 1, 0] },
+//         },
+//       },
+//     },
+//   ]);
+
+//   return row
+//     ? {
+//         all: row.all,
+//         active: row.active,
+//         inactive: row.inactive,
+//         business: row.business,
+//         individual: row.individual,
+//       }
+//     : { all: 0, active: 0, inactive: 0, business: 0, individual: 0 };
+// };
+
+// /* ------------------------------------------------------------------ */
+// /* Read / update / delete                                              */
+// /* ------------------------------------------------------------------ */
+
+// const getSupplierByCode = async ({ tenant, supplierCode }) => {
+//   const connection = getReadyTenantConnection(tenant);
+//   const { Supplier } = getTenantAccountingModels(connection);
 
 //   return Supplier.findOne({
 //     supplierCode: String(supplierCode).trim().toUpperCase(),
-
-//     tenantId,
-
+//     tenantId: tenant._id,
 //     isDeleted: false,
 //   });
 // };
@@ -320,13 +382,7 @@
 //   ipAddress,
 // }) => {
 //   const connection = getReadyTenantConnection(tenant);
-
-//   const {
-//     Supplier,
-//     Ledger,
-//     AuditLog,
-//   } = getTenantAccountingModels(connection);
-
+//   const { Supplier, Ledger, AuditLog } = getTenantAccountingModels(connection);
 //   const tenantId = tenant._id;
 
 //   const session = await connection.startSession();
@@ -337,38 +393,40 @@
 //     await session.withTransaction(async () => {
 //       const supplier = await Supplier.findOne({
 //         supplierCode: String(supplierCode).trim().toUpperCase(),
-
 //         tenantId,
-
 //         isDeleted: false,
 //       }).session(session);
 
 //       if (!supplier) {
 //         const error = new Error("Supplier not found");
-
 //         error.statusCode = 404;
-
 //         throw error;
 //       }
 
 //       const oldData = supplier.toObject();
 
-//       const protectedFields = [
+//       /*
+//         openingBalance / openingBalanceType are protected: changing them here
+//         would not be re-posted to the ledger and the two would disagree.
+//       */
+//       const protectedFields = new Set([
 //         "_id",
 //         "tenantId",
 //         "supplierCode",
 //         "ledgerId",
 //         "payableBalance",
+//         "openingBalance",
+//         "openingBalanceType",
 //         "isDeleted",
 //         "deletedAt",
 //         "deletedBy",
 //         "createdAt",
 //         "updatedAt",
 //         "__v",
-//       ];
+//       ]);
 
 //       for (const [key, value] of Object.entries(payload || {})) {
-//         if (!protectedFields.includes(key)) {
+//         if (!protectedFields.has(key)) {
 //           supplier[key] = value;
 //         }
 //       }
@@ -394,17 +452,12 @@
 //               updatedBy: userId,
 //             },
 //           },
-//           {
-//             new: true,
-//             session,
-//           },
+//           { new: true, session },
 //         );
 
 //         if (!ledger) {
 //           const error = new Error("Linked supplier ledger was not found.");
-
 //           error.statusCode = 409;
-
 //           throw error;
 //         }
 //       }
@@ -434,20 +487,9 @@
 //   }
 // };
 
-// const deleteSupplier = async ({
-//   tenant,
-//   userId,
-//   supplierCode,
-//   ipAddress,
-// }) => {
+// const deleteSupplier = async ({ tenant, userId, supplierCode, ipAddress }) => {
 //   const connection = getReadyTenantConnection(tenant);
-
-//   const {
-//     Supplier,
-//     Ledger,
-//     AuditLog,
-//   } = getTenantAccountingModels(connection);
-
+//   const { Supplier, Ledger, AuditLog } = getTenantAccountingModels(connection);
 //   const tenantId = tenant._id;
 
 //   const session = await connection.startSession();
@@ -458,17 +500,13 @@
 //     await session.withTransaction(async () => {
 //       const supplier = await Supplier.findOne({
 //         supplierCode: String(supplierCode).trim().toUpperCase(),
-
 //         tenantId,
-
 //         isDeleted: false,
 //       }).session(session);
 
 //       if (!supplier) {
 //         const error = new Error("Supplier not found");
-
 //         error.statusCode = 404;
-
 //         throw error;
 //       }
 
@@ -490,23 +528,13 @@
 //             referenceType: "SUPPLIER",
 //             referenceId: supplier._id,
 //           },
-//           {
-//             $set: {
-//               isActive: false,
-//               updatedBy: userId,
-//             },
-//           },
-//           {
-//             new: true,
-//             session,
-//           },
+//           { $set: { isActive: false, updatedBy: userId } },
+//           { new: true, session },
 //         );
 
 //         if (!ledger) {
 //           const error = new Error("Linked supplier ledger was not found.");
-
 //           error.statusCode = 409;
-
 //           throw error;
 //         }
 //       }
@@ -539,6 +567,7 @@
 // module.exports = {
 //   createSupplier,
 //   getSuppliers,
+//   getSupplierStats,
 //   getSupplierByCode,
 //   updateSupplier,
 //   deleteSupplier,
@@ -547,13 +576,10 @@
 const {
   getTenantAccountingModels,
 } = require("../../tenancy/tenantAccountingModels");
-
 const {
   getReadyTenantConnection,
 } = require("../../tenancy/tenantConnectionManager");
-
 const { getNextSequence } = require("../../utils/sequenceGenerator");
-
 const NotificationService = require("../../services/notificationService");
 
 const NORMAL_BALANCE_BY_NATURE = {
@@ -564,14 +590,9 @@ const NORMAL_BALANCE_BY_NATURE = {
   EQUITY: "CREDIT",
 };
 
-/* ------------------------------------------------------------------ */
-/* List helpers                                                        */
-/* ------------------------------------------------------------------ */
-
 const escapeRegex = (value) =>
   String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-// Exact enum values so compound indexes can be used
 const STATUS_MAP = { active: "Active", inactive: "Inactive" };
 const TYPE_MAP = { business: "Business", individual: "Individual" };
 const BALANCE_TYPE_MAP = { debit: "DEBIT", credit: "CREDIT" };
@@ -620,11 +641,8 @@ const buildSupplierFilter = ({
   }
 
   const searchText = String(search || "").trim().slice(0, 100);
-
   if (searchText) {
-    // Prefix match: much faster than "contains" and index friendly
     const prefix = new RegExp(`^${escapeRegex(searchText)}`, "i");
-
     filter.$or = [
       { supplierCode: prefix },
       { supplierName: prefix },
@@ -638,10 +656,6 @@ const buildSupplierFilter = ({
 
   return filter;
 };
-
-/* ------------------------------------------------------------------ */
-/* Ledger helper                                                       */
-/* ------------------------------------------------------------------ */
 
 const createSupplierLedger = async ({
   models,
@@ -662,7 +676,7 @@ const createSupplierLedger = async ({
 
   if (!sundryCreditorsGroup) {
     const error = new Error(
-      "Sundry Creditors ledger group is missing. Seed accounting groups before creating suppliers.",
+      "Sundry Creditors ledger group is missing. Seed accounting groups before creating suppliers."
     );
     error.statusCode = 400;
     throw error;
@@ -672,7 +686,7 @@ const createSupplierLedger = async ({
 
   if (!normalBalance) {
     const error = new Error(
-      "Sundry Creditors ledger group has an invalid account nature.",
+      "Sundry Creditors ledger group has an invalid account nature."
     );
     error.statusCode = 400;
     throw error;
@@ -706,15 +720,11 @@ const createSupplierLedger = async ({
         updatedBy: userId,
       },
     ],
-    { session },
+    { session }
   );
 
   return ledgers[0];
 };
-
-/* ------------------------------------------------------------------ */
-/* Create                                                              */
-/* ------------------------------------------------------------------ */
 
 const createSupplier = async ({ tenant, userId, payload, ipAddress }) => {
   const connection = getReadyTenantConnection(tenant);
@@ -728,12 +738,10 @@ const createSupplier = async ({ tenant, userId, payload, ipAddress }) => {
     let createdSupplier;
 
     await session.withTransaction(async () => {
-      const supplierCode = await getNextSequence(
-        "SU",
-        tenantId.toString(),
-        3,
-        { connection, session },
-      );
+      const supplierCode = await getNextSequence("SU", tenantId.toString(), 3, {
+        connection,
+        session,
+      });
 
       const supplierRecords = await Supplier.create(
         [
@@ -747,7 +755,7 @@ const createSupplier = async ({ tenant, userId, payload, ipAddress }) => {
                 : 0,
           },
         ],
-        { session },
+        { session }
       );
 
       const supplier = supplierRecords[0];
@@ -761,7 +769,6 @@ const createSupplier = async ({ tenant, userId, payload, ipAddress }) => {
       });
 
       supplier.ledgerId = ledger._id;
-
       await supplier.save({ session });
 
       await AuditLog.create(
@@ -776,13 +783,12 @@ const createSupplier = async ({ tenant, userId, payload, ipAddress }) => {
             ipAddress,
           },
         ],
-        { session },
+        { session }
       );
 
       createdSupplier = supplier;
     });
 
-    // A notification failure must never fail a supplier that is already saved
     try {
       await NotificationService.createForTenant({
         tenantId,
@@ -807,10 +813,6 @@ const createSupplier = async ({ tenant, userId, payload, ipAddress }) => {
     await session.endSession();
   }
 };
-
-/* ------------------------------------------------------------------ */
-/* List (server-side search / filter / sort / pagination)              */
-/* ------------------------------------------------------------------ */
 
 const getSuppliers = async ({
   tenant,
@@ -849,7 +851,6 @@ const getSuppliers = async ({
       .skip((currentPage - 1) * pageLimit)
       .limit(pageLimit)
       .lean(),
-
     Supplier.countDocuments(filter),
   ]);
 
@@ -863,10 +864,6 @@ const getSuppliers = async ({
     },
   };
 };
-
-/* ------------------------------------------------------------------ */
-/* Stats for quick-filter chips                                        */
-/* ------------------------------------------------------------------ */
 
 const getSupplierStats = async ({ tenant }) => {
   const connection = getReadyTenantConnection(tenant);
@@ -902,10 +899,6 @@ const getSupplierStats = async ({ tenant }) => {
       }
     : { all: 0, active: 0, inactive: 0, business: 0, individual: 0 };
 };
-
-/* ------------------------------------------------------------------ */
-/* Read / update / delete                                              */
-/* ------------------------------------------------------------------ */
 
 const getSupplierByCode = async ({ tenant, supplierCode }) => {
   const connection = getReadyTenantConnection(tenant);
@@ -949,10 +942,6 @@ const updateSupplier = async ({
 
       const oldData = supplier.toObject();
 
-      /*
-        openingBalance / openingBalanceType are protected: changing them here
-        would not be re-posted to the ledger and the two would disagree.
-      */
       const protectedFields = new Set([
         "_id",
         "tenantId",
@@ -996,7 +985,7 @@ const updateSupplier = async ({
               updatedBy: userId,
             },
           },
-          { new: true, session },
+          { new: true, session }
         );
 
         if (!ledger) {
@@ -1019,7 +1008,7 @@ const updateSupplier = async ({
             ipAddress,
           },
         ],
-        { session },
+        { session }
       );
 
       updatedSupplier = supplier;
@@ -1073,7 +1062,7 @@ const deleteSupplier = async ({ tenant, userId, supplierCode, ipAddress }) => {
             referenceId: supplier._id,
           },
           { $set: { isActive: false, updatedBy: userId } },
-          { new: true, session },
+          { new: true, session }
         );
 
         if (!ledger) {
@@ -1096,13 +1085,74 @@ const deleteSupplier = async ({ tenant, userId, supplierCode, ipAddress }) => {
             ipAddress,
           },
         ],
-        { session },
+        { session }
       );
 
       deletedSupplier = supplier;
     });
 
     return deletedSupplier;
+  } finally {
+    await session.endSession();
+  }
+};
+
+const bulkUpdateStatus = async ({ tenant, userId, payload, ipAddress }) => {
+  const connection = getReadyTenantConnection(tenant);
+  const { Supplier, AuditLog } = getTenantAccountingModels(connection);
+  const tenantId = tenant._id;
+
+  const { ids, status } = payload;
+
+  const suppliers = await Supplier.find({
+    _id: { $in: ids },
+    tenantId,
+    isDeleted: false,
+  });
+
+  if (!suppliers.length) {
+    const error = new Error("No suppliers found for the given ids.");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  const session = await connection.startSession();
+
+  try {
+    let updated = 0;
+
+    await session.withTransaction(async () => {
+      const result = await Supplier.updateMany(
+        { _id: { $in: ids }, tenantId, isDeleted: false },
+        { $set: { status } },
+        { session }
+      );
+
+      updated = result.modifiedCount || 0;
+
+      const affected = suppliers.filter((s) => s.status !== status);
+
+      if (affected.length) {
+        await AuditLog.insertMany(
+          affected.map((supplier) => ({
+            tenantId,
+            userId,
+            action: "UPDATE",
+            module: "SUPPLIER",
+            documentId: supplier._id,
+            oldData: { status: supplier.status },
+            newData: { status },
+            ipAddress,
+          })),
+          { session }
+        );
+      }
+    });
+
+    return {
+      message: `${updated} supplier(s) updated successfully.`,
+      updated,
+    };
   } finally {
     await session.endSession();
   }
@@ -1115,4 +1165,5 @@ module.exports = {
   getSupplierByCode,
   updateSupplier,
   deleteSupplier,
+  bulkUpdateStatus,
 };

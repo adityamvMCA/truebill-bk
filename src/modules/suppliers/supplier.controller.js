@@ -21,9 +21,29 @@
 
 // const getSuppliers = async (req, res, next) => {
 //   try {
+//     const {
+//       search,
+//       status,
+//       supplierType,
+//       openingBalanceType,
+//       state,
+//       sortBy,
+//       sortOrder,
+//       page,
+//       limit,
+//     } = req.query;
+
 //     const result = await supplierService.getSuppliers({
-//       ...req.query,
 //       tenant: req.tenant,
+//       search,
+//       status,
+//       supplierType,
+//       openingBalanceType,
+//       state,
+//       sortBy,
+//       sortOrder,
+//       page,
+//       limit,
 //     });
 
 //     return res.status(200).json({
@@ -31,6 +51,18 @@
 //       data: result.data,
 //       pagination: result.pagination,
 //     });
+//   } catch (error) {
+//     next(error);
+//   }
+// };
+
+// const getSupplierStats = async (req, res, next) => {
+//   try {
+//     const stats = await supplierService.getSupplierStats({
+//       tenant: req.tenant,
+//     });
+
+//     return res.status(200).json({ success: true, data: stats });
 //   } catch (error) {
 //     next(error);
 //   }
@@ -50,10 +82,7 @@
 //       });
 //     }
 
-//     return res.status(200).json({
-//       success: true,
-//       supplier,
-//     });
+//     return res.status(200).json({ success: true, supplier });
 //   } catch (error) {
 //     next(error);
 //   }
@@ -100,10 +129,12 @@
 // module.exports = {
 //   createSupplier,
 //   getSuppliers,
+//   getSupplierStats,
 //   getSupplierByCode,
 //   updateSupplier,
 //   deleteSupplier,
 // };
+
 
 const supplierService = require("./supplier.service");
 
@@ -233,6 +264,21 @@ const deleteSupplier = async (req, res, next) => {
   }
 };
 
+const bulkUpdateSupplierStatus = async (req, res, next) => {
+  try {
+    const result = await supplierService.bulkUpdateStatus({
+      tenant: req.tenant,
+      userId: req.user.userId,
+      payload: req.body,
+      ipAddress: req.ip,
+    });
+
+    return res.status(200).json({ success: true, ...result });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   createSupplier,
   getSuppliers,
@@ -240,4 +286,5 @@ module.exports = {
   getSupplierByCode,
   updateSupplier,
   deleteSupplier,
+  bulkUpdateSupplierStatus,
 };

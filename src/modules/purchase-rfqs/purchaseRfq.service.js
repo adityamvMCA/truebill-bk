@@ -536,57 +536,159 @@ const getRfq = async (args) => {
   return document.toObject();
 };
 
+// const listRfqs = async (args) => {
+//   const { models, tenantId } = resolveContext(args);
+
+//   const {
+//     page = 1,
+//     limit = 20,
+//     search,
+//     status,
+//     creationMode,
+//     supplierId,
+//     sourceRequisitionId,
+//   } = args;
+
+//   const filter = {
+//     tenantId,
+//     isDeleted: false,
+//   };
+
+//   if (status) filter.status = status;
+
+//   if (creationMode) {
+//     filter.creationMode = creationMode;
+//   }
+
+//   if (supplierId) {
+//     filter.supplierIds = objectId(supplierId, "supplierId");
+//   }
+
+//   if (sourceRequisitionId) {
+//     filter.sourceRequisitionId = objectId(
+//       sourceRequisitionId,
+//       "sourceRequisitionId",
+//     );
+//   }
+
+//   if (search) {
+//     const escaped = search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+//     const regex = new RegExp(escaped, "i");
+
+//     filter.$or = [{ rfqNumber: regex }, { sourceRequisitionNumber: regex }];
+//   }
+
+//   const [data, total] = await Promise.all([
+//     models.PurchaseRfq.find(filter)
+//       .sort({
+//         rfqDate: -1,
+//         _id: -1,
+//       })
+//       .skip((page - 1) * limit)
+//       .limit(limit)
+//       .lean(),
+
+//     models.PurchaseRfq.countDocuments(filter),
+//   ]);
+
+//   return {
+//     data,
+//     pagination: {
+//       page,
+//       limit,
+//       total,
+//       totalPages: Math.ceil(total / limit),
+//     },
+//   };
+// };
 const listRfqs = async (args) => {
   const { models, tenantId } = resolveContext(args);
 
-  const {
-    page = 1,
-    limit = 20,
-    search,
-    status,
-    creationMode,
-    supplierId,
-    sourceRequisitionId,
-  } = args;
+  const allowedSortFields = new Set([
+    "rfqNumber",
+    "rfqDate",
+    "quotationDueDate",
+    "creationMode",
+    "status",
+    "sourceRequisitionNumber",
+    "paymentTerms",
+    "createdAt",
+  ]);
+
+  const currentPage = Math.min(
+    100000,
+    Math.max(1, Number.parseInt(args.page, 10) || 1),
+  );
+
+  const pageLimit = Math.min(
+    100,
+    Math.max(1, Number.parseInt(args.limit, 10) || 20),
+  );
 
   const filter = {
     tenantId,
     isDeleted: false,
   };
 
-  if (status) filter.status = status;
-
-  if (creationMode) {
-    filter.creationMode = creationMode;
+  if (args.status) {
+    filter.status = args.status;
   }
 
-  if (supplierId) {
-    filter.supplierIds = objectId(supplierId, "supplierId");
+  if (args.creationMode) {
+    filter.creationMode = args.creationMode;
   }
 
-  if (sourceRequisitionId) {
+  if (args.supplierId) {
+    filter.supplierIds = objectId(
+      args.supplierId,
+      "supplierId",
+    );
+  }
+
+  if (args.sourceRequisitionId) {
     filter.sourceRequisitionId = objectId(
-      sourceRequisitionId,
+      args.sourceRequisitionId,
       "sourceRequisitionId",
     );
   }
 
-  if (search) {
-    const escaped = search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const search = String(args.search || "")
+    .trim()
+    .slice(0, 100);
 
+  if (search) {
+    const escaped = search.replace(
+      /[.*+?^${}()|[\]\\]/g,
+      "\\$&",
+    );
+
+    // Preserve contains-style searching from your existing RFQ service.
     const regex = new RegExp(escaped, "i");
 
-    filter.$or = [{ rfqNumber: regex }, { sourceRequisitionNumber: regex }];
+    filter.$or = [
+      { rfqNumber: regex },
+      { sourceRequisitionNumber: regex },
+    ];
   }
+
+  const sortField = allowedSortFields.has(args.sortBy)
+    ? args.sortBy
+    : "rfqDate";
+
+  const sortDirection =
+    args.sortOrder === "asc" ? 1 : -1;
+
+  const skip = (currentPage - 1) * pageLimit;
 
   const [data, total] = await Promise.all([
     models.PurchaseRfq.find(filter)
       .sort({
-        rfqDate: -1,
-        _id: -1,
+        [sortField]: sortDirection,
+        _id: sortDirection,
       })
-      .skip((page - 1) * limit)
-      .limit(limit)
+      .skip(skip)
+      .limit(pageLimit)
       .lean(),
 
     models.PurchaseRfq.countDocuments(filter),
@@ -594,15 +696,18 @@ const listRfqs = async (args) => {
 
   return {
     data,
+
     pagination: {
-      page,
-      limit,
+      page: currentPage,
+      limit: pageLimit,
       total,
-      totalPages: Math.ceil(total / limit),
+      totalPages: Math.max(
+        1,
+        Math.ceil(total / pageLimit),
+      ),
     },
   };
 };
-
 /* ==========================================
    UPDATE
    ========================================== */
