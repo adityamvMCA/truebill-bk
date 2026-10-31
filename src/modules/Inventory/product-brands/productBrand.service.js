@@ -1,6 +1,4 @@
-const service = require(
-  "../shared/createMasterService",
-)("brand");
+const service = require("../shared/createMasterService")("brand");
 
 module.exports = {
   createBrand: service.create,
@@ -8,4 +6,5 @@ module.exports = {
   listBrands: service.list,
   updateBrand: service.update,
   seedDefaults: service.seedDefaults,
+  bulkUpdateStatus: service.bulkUpdateStatus,
 };

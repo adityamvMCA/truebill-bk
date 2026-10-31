@@ -22,12 +22,16 @@ const normalizeName = (value) =>
     .trim()
     .replace(/\s+/g, " ");
 
-const nullableText = (value) => String(value ?? "").trim() || null;
+const nullableText = (value) =>
+  String(value ?? "").trim() || null;
 
 const normalizeCode = (value) =>
   String(value ?? "")
     .trim()
     .toUpperCase();
+
+const escapeRegex = (value) =>
+  value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 const objectId = (value, label) => {
   if (!mongoose.isObjectIdOrHexString(value)) {
@@ -43,7 +47,6 @@ const resolveContext = (args) => {
   }
 
   const connection = getReadyTenantConnection(args.tenant);
-
   const models = getTenantAccountingModels(connection);
 
   for (const name of ["ProductUnit", "AuditLog"]) {
@@ -177,7 +180,6 @@ const buildFields = (payload, creating = false) => {
 const createUnit = (args) =>
   transaction(args, async (context) => {
     const payload = args.payload || {};
-
     const unitCode = normalizeCode(payload.unitCode);
 
     if (!/^[A-Z][A-Z0-9_]{0,19}$/.test(unitCode)) {
@@ -216,6 +218,38 @@ const getUnit = async (args) => {
   return unit.toObject();
 };
 
+const buildListFilter = (args, tenantId) => {
+  const filter = { tenantId };
+
+  if (args.status) {
+    if (!["ACTIVE", "INACTIVE"].includes(args.status)) {
+      throw createError("Invalid unit status");
+    }
+
+    filter.status = args.status;
+  }
+
+  if (args.isSystem !== undefined && args.isSystem !== "") {
+    filter.isSystem = args.isSystem === true || args.isSystem === "true";
+  }
+
+  const search = String(args.search ?? "").trim();
+
+  if (search) {
+    const regex = new RegExp(escapeRegex(search), "i");
+
+    filter.$or = [
+      { unitCode: regex },
+      { name: regex },
+      { normalizedName: regex },
+      { symbol: regex },
+      { description: regex },
+    ];
+  }
+
+  return filter;
+};
+
 const listUnits = async (args) => {
   const { models, tenantId } = resolveContext(args);
 
@@ -238,38 +272,100 @@ const listUnits = async (args) => {
     throw createError("Pagination offset exceeds the supported range");
   }
 
-  const filter = { tenantId };
+  const baseFilter = buildListFilter(
+    {
+      ...args,
+      status: undefined,
+    },
+    tenantId,
+  );
 
-  if (args.status) {
-    if (!["ACTIVE", "INACTIVE"].includes(args.status)) {
-      throw createError("Invalid unit status");
-    }
+  const filter = buildListFilter(args, tenantId);
 
-    filter.status = args.status;
-  }
+  const allowedSortFields = [
+    "unitCode",
+    "name",
+    "normalizedName",
+    "symbol",
+    "status",
+    "isSystem",
+    "createdAt",
+    "updatedAt",
+  ];
 
-  const search = String(args.search ?? "").trim();
+  const sortBy = allowedSortFields.includes(args.sortBy)
+    ? args.sortBy
+    : "name";
 
-  if (search) {
-    const escaped = search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const sortOrder = args.sortOrder === "desc" ? -1 : 1;
 
-    const regex = new RegExp(escaped, "i");
+  const sort = {
+    [sortBy]: sortOrder,
+    _id: 1,
+  };
 
-    filter.$or = [{ unitCode: regex }, { name: regex }, { symbol: regex }];
-  }
-
-  const [data, total] = await Promise.all([
+  const [data, total, countRows] = await Promise.all([
     models.ProductUnit.find(filter)
-      .sort({
-        name: 1,
-        _id: 1,
-      })
+      .select(
+        "tenantId unitCode name normalizedName symbol description status isSystem createdBy updatedBy createdAt updatedAt __v",
+      )
+      .sort(sort)
       .skip(skip)
       .limit(limit)
       .lean(),
 
     models.ProductUnit.countDocuments(filter),
+
+    models.ProductUnit.aggregate([
+      {
+        $match: baseFilter,
+      },
+      {
+        $group: {
+          _id: null,
+          all: { $sum: 1 },
+          active: {
+            $sum: {
+              $cond: [{ $eq: ["$status", "ACTIVE"] }, 1, 0],
+            },
+          },
+          inactive: {
+            $sum: {
+              $cond: [{ $eq: ["$status", "INACTIVE"] }, 1, 0],
+            },
+          },
+          defaults: {
+            $sum: {
+              $cond: [{ $eq: ["$isSystem", true] }, 1, 0],
+            },
+          },
+          custom: {
+            $sum: {
+              $cond: [{ $eq: ["$isSystem", false] }, 1, 0],
+            },
+          },
+        },
+      },
+      {
+        $project: {
+          _id: 0,
+          all: 1,
+          active: 1,
+          inactive: 1,
+          defaults: 1,
+          custom: 1,
+        },
+      },
+    ]),
   ]);
+
+  const counts = countRows[0] || {
+    all: 0,
+    active: 0,
+    inactive: 0,
+    defaults: 0,
+    custom: 0,
+  };
 
   return {
     data,
@@ -279,6 +375,7 @@ const listUnits = async (args) => {
       total,
       totalPages: Math.ceil(total / limit),
     },
+    counts,
   };
 };
 
@@ -323,9 +420,140 @@ const updateUnit = (args) =>
     return unit.toObject();
   });
 
+const bulkUpdateStatus = (args) =>
+  transaction(args, async (context) => {
+    const unitCodes = [
+      ...new Set((args.unitCodes || []).map(normalizeCode)),
+    ];
+
+    const status = args.status;
+
+    if (!unitCodes.length || unitCodes.length > 500) {
+      throw createError("Select between 1 and 500 units");
+    }
+
+    if (!["ACTIVE", "INACTIVE"].includes(status)) {
+      throw createError("Invalid unit status");
+    }
+
+    const units = await context.models.ProductUnit.find({
+      tenantId: context.tenantId,
+      unitCode: { $in: unitCodes },
+    }).session(context.session);
+
+    if (units.length !== unitCodes.length) {
+      throw createError(
+        "Some selected units were not found. Refresh the list and try again.",
+        409,
+      );
+    }
+
+    const versions = args.versions || {};
+
+    for (const unit of units) {
+      if (
+        hasOwn(versions, unit.unitCode) &&
+        unit.__v !== versions[unit.unitCode]
+      ) {
+        throw createError(
+          `Unit ${unit.unitCode} changed. Refresh the list and try again.`,
+          409,
+        );
+      }
+    }
+
+    const changedUnits = units.filter(
+      (unit) => unit.status !== status,
+    );
+
+    if (!changedUnits.length) {
+      return {
+        status,
+        requestedCount: unitCodes.length,
+        affectedCount: 0,
+        unchangedCount: unitCodes.length,
+      };
+    }
+
+    const operations = [];
+    const audits = [];
+
+    for (const unit of changedUnits) {
+      const oldData = unit.toObject();
+
+      const nextVersion = unit.__v + 1;
+
+      operations.push({
+        updateOne: {
+          filter: {
+            _id: unit._id,
+            tenantId: context.tenantId,
+            unitCode: unit.unitCode,
+            __v: unit.__v,
+          },
+          update: {
+            $set: {
+              status,
+              updatedBy: context.userId,
+            },
+            $inc: {
+              __v: 1,
+            },
+          },
+        },
+      });
+
+      audits.push({
+        tenantId: context.tenantId,
+        userId: context.userId,
+        action: "UPDATE",
+        module: "PRODUCT_UNIT",
+        documentId: unit._id,
+        oldData,
+        newData: {
+          ...oldData,
+          status,
+          updatedBy: context.userId,
+          __v: nextVersion,
+        },
+        ipAddress: context.ipAddress,
+      });
+    }
+
+    const result = await context.models.ProductUnit.bulkWrite(
+      operations,
+      {
+        session: context.session,
+        ordered: true,
+      },
+    );
+
+    if (result.modifiedCount !== changedUnits.length) {
+      throw createError(
+        "Some units changed during the bulk operation. Refresh and try again.",
+        409,
+      );
+    }
+
+    if (audits.length) {
+      await context.models.AuditLog.insertMany(audits, {
+        session: context.session,
+        ordered: true,
+      });
+    }
+
+    return {
+      status,
+      requestedCount: unitCodes.length,
+      affectedCount: result.modifiedCount,
+      unchangedCount: unitCodes.length - changedUnits.length,
+    };
+  });
+
 module.exports = {
   createUnit,
   getUnit,
   listUnits,
   updateUnit,
+  bulkUpdateStatus,
 };

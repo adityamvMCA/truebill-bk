@@ -1,5 +1,4 @@
 const service = require("./productBrand.service");
-
 const { importProductBrands } = require("./productBrand.import");
 
 const getContext = (req) => ({
@@ -35,6 +34,7 @@ const listBrands = async (req, res, next) => {
       success: true,
       data: result.data,
       pagination: result.pagination,
+      counts: result.counts,
     });
   } catch (error) {
     return next(error);
@@ -68,19 +68,35 @@ const updateBrand = async (req, res, next) => {
   }
 };
 
+const bulkUpdateStatus = async (req, res, next) => {
+  try {
+    const result = await service.bulkUpdateStatus({
+      tenant: req.tenant,
+      userId: req.user.userId,
+      ipAddress: req.ip,
+      ...req.validatedBody,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Product brands updated successfully",
+      data: result,
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
 const importBrands = async (req, res, next) => {
   try {
     const result = await importProductBrands({
       ...getContext(req),
-      buffer: req.file?.buffer,
+      rows: req.body?.rows,
     });
 
     return res.status(200).json({
       success: !result.requiresVerification,
-
       ...result,
-
-      message: result.message || "Import completed; check row results",
     });
   } catch (error) {
     return next(error);
@@ -110,6 +126,7 @@ module.exports = {
   listBrands,
   getBrand,
   updateBrand,
+  bulkUpdateStatus,
   importBrands,
   seedDefaults,
 };

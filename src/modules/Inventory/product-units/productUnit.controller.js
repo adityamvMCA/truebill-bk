@@ -34,6 +34,7 @@ const listUnits = async (req, res, next) => {
       success: true,
       data: result.data,
       pagination: result.pagination,
+      counts: result.counts,
     });
   } catch (error) {
     return next(error);
@@ -67,28 +68,33 @@ const updateUnit = async (req, res, next) => {
   }
 };
 
-const importUnits = async (req, res, next) => {
+const bulkUpdateStatus = async (req, res, next) => {
   try {
-    const result = await importProductUnits({
+    const result = await service.bulkUpdateStatus({
       tenant: req.tenant,
       userId: req.user.userId,
-      buffer: req.file?.buffer,
       ipAddress: req.ip,
+      ...req.validatedBody,
     });
 
     return res.status(200).json({
       success: true,
-      message: "Product units imported successfully",
-      ...result,
+      message: "Product units updated successfully",
+      data: result,
     });
   } catch (error) {
     return next(error);
   }
 };
+
+const importUnits = (req, res, next) =>
+  importProductUnits(req, res, next);
+
 module.exports = {
   createUnit,
   listUnits,
   getUnit,
   updateUnit,
+  bulkUpdateStatus,
   importUnits,
 };

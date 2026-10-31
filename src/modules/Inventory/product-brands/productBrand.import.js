@@ -1,6 +1,8 @@
 const service = require("../shared/createMasterService")("brand");
 
-const { createProductBrandSchema } = require("./productBrand.validation");
+const {
+  createProductBrandSchema,
+} = require("./productBrand.validation");
 
 const createCsvImporter = require("../shared/masterCsv");
 

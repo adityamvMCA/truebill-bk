@@ -110,7 +110,32 @@ productUnitSchema.index({
   name: 1,
   _id: 1,
 });
+productUnitSchema.index({
+  tenantId: 1,
+  name: 1,
+  _id: 1,
+});
 
+productUnitSchema.index({
+  tenantId: 1,
+  unitCode: 1,
+  _id: 1,
+});
+
+productUnitSchema.index({
+  tenantId: 1,
+  isSystem: 1,
+  name: 1,
+  _id: 1,
+});
+
+productUnitSchema.index({
+  tenantId: 1,
+  status: 1,
+  isSystem: 1,
+  name: 1,
+  _id: 1,
+});
 module.exports =
   mongoose.models.ProductUnit ||
   mongoose.model("ProductUnit", productUnitSchema);

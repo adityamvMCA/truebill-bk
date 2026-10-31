@@ -31,7 +31,6 @@ const updateSchema = Joi.object({
     .max(Number.MAX_SAFE_INTEGER)
     .strict()
     .required(),
-
   name,
   symbol: optionalText(20),
   description: optionalText(1000),
@@ -45,25 +44,49 @@ const paramsSchema = Joi.object({
 }).unknown(false);
 
 const listSchema = Joi.object({
-  search: Joi.string()
-    .trim()
-    .max(100)
-    .allow("")
-    .default(""),
+  search: Joi.string().trim().max(100).allow("").default(""),
 
   status,
 
-  page: Joi.number()
-    .integer()
-    .min(1)
-    .max(100000)
-    .default(1),
+  isSystem: Joi.boolean(),
 
-  limit: Joi.number()
-    .integer()
+  sortBy: Joi.string()
+    .valid(
+      "unitCode",
+      "name",
+      "normalizedName",
+      "symbol",
+      "status",
+      "isSystem",
+      "createdAt",
+      "updatedAt",
+    )
+    .allow("")
+    .default(""),
+
+  sortOrder: Joi.string().valid("asc", "desc").allow("").default(""),
+
+  page: Joi.number().integer().min(1).max(100000).default(1),
+
+  limit: Joi.number().integer().min(1).max(100).default(20),
+}).unknown(false);
+
+const bulkStatusSchema = Joi.object({
+  unitCodes: Joi.array()
+    .items(unitCode.required())
     .min(1)
-    .max(100)
-    .default(20),
+    .max(500)
+    .unique()
+    .required(),
+
+  status: status.required(),
+
+  versions: Joi.object()
+    .pattern(
+      /^[A-Z][A-Z0-9_]{0,19}$/,
+      Joi.number().integer().min(0).max(Number.MAX_SAFE_INTEGER).required(),
+    )
+    .default({}),
 }).unknown(false);
 
 const validate =
@@ -92,6 +115,7 @@ const validate =
 
     return next();
   };
+
 const createProductUnitSchema = Joi.object({
   unitCode: unitCode.required(),
   name: name.required(),
@@ -102,11 +126,9 @@ const createProductUnitSchema = Joi.object({
 
 module.exports = {
   validateCreate: validate(createSchema),
-
   validateUpdate: validate(updateSchema),
-
   validateParams: validate(paramsSchema, "params"),
-
   validateList: validate(listSchema, "query"),
+  validateBulkStatus: validate(bulkStatusSchema),
   createProductUnitSchema,
 };
