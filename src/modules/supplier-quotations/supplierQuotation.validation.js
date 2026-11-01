@@ -173,6 +173,26 @@ const paramsSchema = Joi.object({
 const listSchema = Joi.object({
   page: Joi.number().integer().min(1).max(100000).default(1),
 
+  sortBy: Joi.string()
+  .valid(
+    "quotationNumber",
+    "quotationDate",
+    "validUntil",
+    "creationMode",
+    "totalAmountPaise",
+    "status",
+    "paymentTerms",
+    "deliveryTerms",
+    "createdAt",
+  )
+  .empty("")
+  .default("quotationDate"),
+
+sortOrder: Joi.string()
+  .valid("asc", "desc")
+  .empty("")
+  .default("desc"),
+
   limit: Joi.number().integer().min(1).max(100).default(20),
 
   search: Joi.string().trim().max(100).allow(""),

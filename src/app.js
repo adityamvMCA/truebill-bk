@@ -103,16 +103,48 @@ if (process.env.NODE_ENV !== "test") {
   app.use(morgan("dev"));
 }
 
+// app.use(
+//   "/api",
+//   rateLimit({
+//     windowMs: 15 * 60 * 1000,
+//     limit: 300,
+//     standardHeaders: "draft-8",
+//     legacyHeaders: false,
+//   }),
+// );
 app.use(
-  "/api",
-  rateLimit({
-    windowMs: 15 * 60 * 1000,
-    limit: 300,
-    standardHeaders: "draft-8",
-    legacyHeaders: false,
+  cors({
+    origin: (origin, callback) => {
+      if (!origin) {
+        return callback(null, true);
+      }
+
+      if (
+        allowedOrigins.length === 0 ||
+        allowedOrigins.includes(origin) ||
+        origin === "capacitor://localhost" ||
+        origin === "http://localhost" ||
+        origin === "https://localhost"
+      ) {
+        return callback(null, true);
+      }
+
+      return callback(new Error("Not allowed by CORS"));
+    },
+
+    credentials: true,
+
+    // Allow frontend Axios to read backend time and rate-limit headers.
+    exposedHeaders: [
+      "Date",
+      "Retry-After",
+      "RateLimit",
+      "RateLimit-Policy",
+      "RateLimit-Reset",
+      "X-RateLimit-Reset",
+    ],
   }),
 );
-
 app.get("/api/health", (req, res) =>
   res.json({
     success: true,

@@ -79,11 +79,6 @@
 //       required: true,
 //     },
 
-//     // sourceType: {
-//     //   type: String,
-//     //   enum: ["PURCHASE_BILL"],
-//     //   required: true,
-//     // },
 //     sourceType: {
 //       type: String,
 //       enum: [
@@ -94,6 +89,11 @@
 //         "CUSTOMER_RECEIPT",
 //         "SALES_RETURN",
 //         "PURCHASE_RETURN",
+//         "EXPENSE",
+//         "CREDIT_NOTE",
+//         "DEBIT_NOTE",
+//         "TDS_DEDUCTION",
+//         "TDS_PAYMENT",
 //       ],
 //       required: true,
 //     },
@@ -166,7 +166,7 @@
 
 // journalSchema.index({ tenantId: 1, journalNumber: 1 }, { unique: true });
 
-// // Prevent posting the same purchase bill twice.
+// // Prevent posting the same source document twice.
 // journalSchema.index(
 //   {
 //     tenantId: 1,
@@ -431,6 +431,28 @@ journalSchema.index({
   "lines.ledgerId": 1,
   postingDate: -1,
 });
+
+/* ------------------------------------------------------------------ */
+/* NEW INDEXES (Day Book speed). Everything above is unchanged.        */
+/* ------------------------------------------------------------------ */
+
+// List: tenant + date range, sorted postingDate DESC, _id DESC (no in-memory sort)
+journalSchema.index({ tenantId: 1, postingDate: -1, _id: -1 });
+
+// List filtered by voucher type
+journalSchema.index({ tenantId: 1, sourceType: 1, postingDate: -1, _id: -1 });
+
+// Summary: covered index, the group-by never reads the documents
+journalSchema.index({
+  tenantId: 1,
+  postingDate: 1,
+  sourceType: 1,
+  totalDebitPaise: 1,
+  totalCreditPaise: 1,
+});
+
+// Search by source number prefix
+journalSchema.index({ tenantId: 1, sourceNumber: 1 });
 
 journalSchema.pre("validate", function () {
   let totalDebit = 0;
