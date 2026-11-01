@@ -12,6 +12,13 @@ const querySchema = Joi.object({
 
   search: Joi.string().trim().max(100).allow("").default(""),
 
+  asOfDate: Joi.string()
+    .trim()
+    .pattern(/^\d{4}-\d{2}-\d{2}$/)
+    .messages({
+      "string.pattern.base": "asOfDate must use YYYY-MM-DD",
+    }),
+
   overdueOnly: Joi.boolean().default(false),
 
   page: Joi.number().integer().min(1).default(1),

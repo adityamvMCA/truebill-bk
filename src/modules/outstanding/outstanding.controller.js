@@ -1,30 +1,6 @@
-// const { getOutstanding } = require("./outstanding.service");
+const { getOutstanding, getOutstandingSummary } = require("./outstanding.service");
 
-// const createHandler = (kind) => async (req, res, next) => {
-//   try {
-//     const result = await getOutstanding({
-//       ...req.validatedQuery,
-//       tenantId: req.tenantId,
-//       kind,
-//     });
-
-//     return res.status(200).json({
-//       success: true,
-//       ...result,
-//     });
-//   } catch (error) {
-//     next(error);
-//   }
-// };
-
-// module.exports = {
-//   getCustomerOutstanding: createHandler("customer"),
-//   getSupplierOutstanding: createHandler("supplier"),
-// };
-
-const { getOutstanding } = require("./outstanding.service");
-
-const createHandler = (kind) => async (req, res, next) => {
+const listHandler = (kind) => async (req, res, next) => {
   try {
     const result = await getOutstanding({
       ...req.validatedQuery,
@@ -32,16 +8,33 @@ const createHandler = (kind) => async (req, res, next) => {
       kind,
     });
 
-    return res.status(200).json({
-      success: true,
-      ...result,
-    });
+    return res.status(200).json({ success: true, ...result });
   } catch (error) {
-    next(error);
+    return next(error);
+  }
+};
+
+const summaryHandler = (kind) => async (req, res, next) => {
+  try {
+    // The summary ignores view / partyId / paging.
+    const { view, partyId, page, limit, ...filters } = req.validatedQuery;
+
+    const result = await getOutstandingSummary({
+      ...filters,
+      tenant: req.tenant,
+      kind,
+    });
+
+    // `data` and `totals` both carry the numbers so the UI hook can read either.
+    return res.status(200).json({ success: true, ...result, data: result.totals });
+  } catch (error) {
+    return next(error);
   }
 };
 
 module.exports = {
-  getCustomerOutstanding: createHandler("customer"),
-  getSupplierOutstanding: createHandler("supplier"),
+  getCustomerOutstanding: listHandler("customer"),
+  getSupplierOutstanding: listHandler("supplier"),
+  getCustomerOutstandingSummary: summaryHandler("customer"),
+  getSupplierOutstandingSummary: summaryHandler("supplier"),
 };
