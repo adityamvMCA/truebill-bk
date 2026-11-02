@@ -23,7 +23,21 @@ const MODULES = {
     features: [],
     permissions: [],
   },
-
+  share: {
+    features: [
+      "share.email",
+      "share.whatsapp",
+      "share.templates",
+      "share.logs",
+      "share.settings",
+      "share.analytics",
+    ],
+    permissions: [
+      ...p("share", "view", "send"),
+      "share.settings.manage",
+      "share.templates.manage",
+    ],
+  },
   sales: {
     features: [
       "sales.customers",

@@ -58,6 +58,7 @@ const noteRoutes = require("./modules/accounting/Note/note.routes");
 const tdsRoutes = require("./modules/accounting/tds/tds.routes");
 const app = express();
 const hsnSacCodeRoutes = require("./modules/Inventory/hsn-sac-codes/hsnSacCode.routes");
+const webhook = require("./controllers/whatsappWebhook.controller");
 
 app.set("trust proxy", 1);
 
@@ -217,6 +218,9 @@ app.use("/api/expenses", expenseRoutes);
 app.use("/api/notes", noteRoutes);
 app.use("/api/tds", tdsRoutes);
 app.use(express.json({ limit: "5mb" }));
+app.get("/api/webhooks/whatsapp", webhook.verify);
+app.post("/api/webhooks/whatsapp", express.raw({ type: "application/json" }), webhook.receive);
+app.use("/api/share", require("./routes/share.routes"));
 app.use((req, res) =>
   res.status(404).json({
     success: false,
