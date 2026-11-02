@@ -9,21 +9,19 @@ const MessagingSettings = require("../models/MessagingSettings");
 const wa = require("../services/whatsapp");
 const { sendMail } = require("../services/mailer");
 
-const {
-  buildInvoicePdf,
-  buildSamplePdf,
-} = require("../services/invoicePdf");
+const { buildInvoicePdf, buildSamplePdf } = require("../services/invoicePdf");
 
 const T = require("../services/templateRender");
 
-const salesInvoiceModel = require("../modules/sales-invoices/salesInvoice.model");
+// Invoices live in per-tenant databases, NOT the default connection.
+const { getReadyTenantConnection } = require("../tenancy/tenantConnectionManager");
+const { getTenantAccountingModels } = require("../tenancy/tenantAccountingModels");
 
 /* ================================================================
    HELPERS
 ================================================================ */
 
-const fail = (http, message) =>
-  Object.assign(new Error(message), { http });
+const fail = (http, message) => Object.assign(new Error(message), { http });
 
 const wrap = (fn) => async (req, res, next) => {
   try {
@@ -35,20 +33,27 @@ const wrap = (fn) => async (req, res, next) => {
       return next(error);
     }
 
-    return res.status(error.http || 500).json({
+    return res.status(error.http || error.statusCode || 500).json({
       success: false,
       message: error.message || "Server error",
     });
   }
 };
 
+const isObjectId = (value) => mongoose.Types.ObjectId.isValid(String(value));
+
+const toObjectId = (value) => new mongoose.Types.ObjectId(String(value));
+
+/**
+ * Resolve the tenant for this request.
+ *
+ * resolveTenant middleware sets req.tenant (works for both tenant users
+ * and platform users who selected a tenant). Prefer it, and verify it
+ * against the token tenant for tenant users.
+ */
 const getTenantId = (req) => {
   const authTenantId = req.user?.tenantId;
-  const resolvedTenantId = req.tenantId;
-
-  if (!authTenantId && !resolvedTenantId) {
-    throw fail(400, "Tenant context is missing");
-  }
+  const resolvedTenantId = req.tenant?._id ?? req.tenant?.id ?? req.tenantId;
 
   if (
     authTenantId &&
@@ -58,28 +63,53 @@ const getTenantId = (req) => {
     throw fail(403, "Tenant context mismatch");
   }
 
-  const tenantId = authTenantId || resolvedTenantId;
+  const tenantId =
+    resolvedTenantId ||
+    authTenantId ||
+    req.headers?.["x-tenant-id"] ||
+    req.headers?.["x-selected-tenant-id"] ||
+    req.query?.tenantId;
 
-  if (!mongoose.Types.ObjectId.isValid(String(tenantId))) {
+  if (!tenantId) {
+    throw fail(400, "Tenant context is missing");
+  }
+
+  if (!isObjectId(tenantId)) {
     throw fail(400, "Invalid tenant ID");
   }
 
-  return new mongoose.Types.ObjectId(String(tenantId));
+  return toObjectId(tenantId);
+};
+
+/**
+ * Get the SalesInvoice model bound to the tenant's own connection.
+ */
+const getSalesInvoiceModel = (req) => {
+  if (!req.tenant) {
+    throw fail(
+      400,
+      "Tenant context is missing. Ensure resolveTenant runs on /api/share.",
+    );
+  }
+
+  const connection = getReadyTenantConnection(req.tenant);
+  const models = getTenantAccountingModels(connection);
+
+  if (!models?.SalesInvoice || models.SalesInvoice.db !== connection) {
+    throw fail(500, "Sales invoice model is unavailable for this tenant");
+  }
+
+  return models.SalesInvoice;
 };
 
 const getUserId = (req) => {
-  const userId =
-    req.user?.userId ||
-    req.user?._id ||
-    req.user?.id;
+  const userId = req.user?.userId || req.user?._id || req.user?.id;
 
-  if (!userId) {
+  if (!userId || !isObjectId(userId)) {
     return undefined;
   }
 
-  return mongoose.Types.ObjectId.isValid(String(userId))
-    ? new mongoose.Types.ObjectId(String(userId))
-    : undefined;
+  return toObjectId(userId);
 };
 
 const getSettings = async (tenantId) => {
@@ -98,20 +128,14 @@ const estimateCostPaise = (settings, channel, kind) => {
   }
 
   // Assumes configured rates are in rupees.
-  return Math.round(
-    Number(settings.rates?.[channel]?.[kind] || 0) * 100
-  );
+  return Math.round(Number(settings.rates?.[channel]?.[kind] || 0) * 100);
 };
 
 const periodStart = (key) => {
   const now = new Date();
 
   if (key === "today") {
-    return new Date(
-      now.getFullYear(),
-      now.getMonth(),
-      now.getDate()
-    );
+    return new Date(now.getFullYear(), now.getMonth(), now.getDate());
   }
 
   if (key === "7d") {
@@ -129,69 +153,67 @@ const escapeRegex = (value) =>
   String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 const normalizeInvoiceNumber = (value) =>
-  String(value || "").trim().toUpperCase();
+  String(value || "")
+    .trim()
+    .toUpperCase();
 
 /**
- * Find an invoice securely within the authenticated tenant.
+ * Find an invoice inside the tenant's own database.
  *
- * Prefer invoiceId because it is the MongoDB document ID.
- * invoiceNumber is supported as a fallback for older clients.
+ * 1. Try invoiceId.
+ * 2. If that misses and an invoiceNumber was sent, fall back to
+ *    invoiceNumber, so a stale id does not block sending.
  */
 const findInvoiceForShare = async ({
+  SalesInvoice,
   tenantId,
   invoiceId,
   invoiceNumber,
 }) => {
-  let invoice = null;
+  const number = normalizeInvoiceNumber(invoiceNumber);
 
-  if (invoiceId) {
-    if (!mongoose.Types.ObjectId.isValid(String(invoiceId))) {
-      throw fail(400, "Invalid invoice ID");
-    }
-
-    invoice = await salesInvoiceModel
-      .findOne({
-        _id: new mongoose.Types.ObjectId(String(invoiceId)),
-        tenantId,
-        isDeleted: { $ne: true },
-      })
-      .lean();
-
-    if (!invoice) {
-      throw fail(
-        404,
-        "Invoice not found for this tenant. Verify invoiceId and tenantId."
-      );
-    }
-
-    if (
-      invoiceNumber &&
-      normalizeInvoiceNumber(invoice.invoiceNumber) !==
-        normalizeInvoiceNumber(invoiceNumber)
-    ) {
-      throw fail(
-        400,
-        "Invoice ID and invoice number do not match"
-      );
-    }
-
-    return invoice;
-  }
-
-  if (!invoiceNumber) {
+  if (!invoiceId && !number) {
     throw fail(400, "Invoice ID or invoice number is required");
   }
 
-  invoice = await salesInvoiceModel
-    .findOne({
+  if (invoiceId && !isObjectId(invoiceId)) {
+    throw fail(400, "Invalid invoice ID");
+  }
+
+  let invoice = null;
+
+  if (invoiceId) {
+    invoice = await SalesInvoice.findOne({
+      _id: toObjectId(invoiceId),
       tenantId,
-      invoiceNumber: normalizeInvoiceNumber(invoiceNumber),
       isDeleted: { $ne: true },
-    })
-    .lean();
+    }).lean();
+
+    if (
+      invoice &&
+      number &&
+      normalizeInvoiceNumber(invoice.invoiceNumber) !== number
+    ) {
+      throw fail(400, "Invoice ID and invoice number do not match");
+    }
+  }
+
+  if (!invoice && number) {
+    invoice = await SalesInvoice.findOne({
+      tenantId,
+      invoiceNumber: number,
+      isDeleted: { $ne: true },
+    }).lean();
+  }
 
   if (!invoice) {
-    throw fail(404, "Invoice not found");
+    console.warn("Share: invoice not found", {
+      tenantId: String(tenantId),
+      invoiceId: invoiceId ? String(invoiceId) : undefined,
+      invoiceNumber: number || undefined,
+    });
+
+    throw fail(404, "Invoice not found for the selected tenant.");
   }
 
   return invoice;
@@ -204,6 +226,7 @@ const findInvoiceForShare = async ({
 exports.send = wrap(async (req, res) => {
   const tenantId = getTenantId(req);
   const userId = getUserId(req);
+  const SalesInvoice = getSalesInvoiceModel(req);
 
   const {
     invoiceId,
@@ -244,6 +267,7 @@ exports.send = wrap(async (req, res) => {
   /* ---------- FETCH INVOICE ---------- */
 
   const invoice = await findInvoiceForShare({
+    SalesInvoice,
     tenantId,
     invoiceId,
     invoiceNumber,
@@ -255,15 +279,9 @@ exports.send = wrap(async (req, res) => {
 
   if (
     kind === "reminder" &&
-    (
-      invoice.status !== "POSTED" ||
-      invoice.paymentStatus === "PAID"
-    )
+    (invoice.status !== "POSTED" || invoice.paymentStatus === "PAID")
   ) {
-    throw fail(
-      400,
-      "Reminders are only for posted, unpaid invoices"
-    );
+    throw fail(400, "Reminders are only for posted, unpaid invoices");
   }
 
   /* ---------- SETTINGS ---------- */
@@ -275,7 +293,7 @@ exports.send = wrap(async (req, res) => {
   let template = null;
 
   if (templateId) {
-    if (!mongoose.Types.ObjectId.isValid(String(templateId))) {
+    if (!isObjectId(templateId)) {
       throw fail(400, "Invalid template ID");
     }
 
@@ -291,14 +309,10 @@ exports.send = wrap(async (req, res) => {
     }
   }
 
-  if (
-    template &&
-    channel === "whatsapp" &&
-    template.status !== "APPROVED"
-  ) {
+  if (template && channel === "whatsapp" && template.status !== "APPROVED") {
     throw fail(
       400,
-      `Template is ${template.status}. Only approved templates can be sent.`
+      `Template is ${template.status}. Only approved templates can be sent.`,
     );
   }
 
@@ -333,14 +347,9 @@ exports.send = wrap(async (req, res) => {
 
     /* ---------- GENERATE PDF ---------- */
 
-    // Invoice sharing always attaches the invoice PDF.
-    const wantsPdf =
-      kind === "invoice" ||
-      Boolean(template?.attachPdf);
+    const wantsPdf = kind === "invoice" || Boolean(template?.attachPdf);
 
-    const pdf = wantsPdf
-      ? await buildInvoicePdf(invoice)
-      : null;
+    const pdf = wantsPdf ? await buildInvoicePdf(invoice) : null;
 
     if (wantsPdf && !pdf) {
       throw new Error("Invoice PDF generation failed");
@@ -350,18 +359,13 @@ exports.send = wrap(async (req, res) => {
 
     let providerId;
 
-    /* ============================================================
-       EMAIL SENDING - GMAIL SMTP
-    ============================================================ */
-
     if (channel === "email") {
-      if (
-        !process.env.MAIL_EMAIL ||
-        !process.env.MAIL_PASSWORD
-      ) {
-        throw new Error(
-          "Email service is not configured on the server"
-        );
+      /* ============================================================
+         EMAIL SENDING - GMAIL SMTP
+      ============================================================ */
+
+      if (!process.env.MAIL_EMAIL || !process.env.MAIL_PASSWORD) {
+        throw new Error("Email service is not configured on the server");
       }
 
       const renderedSubject = template?.subject
@@ -370,8 +374,7 @@ exports.send = wrap(async (req, res) => {
 
       const renderedText = template
         ? T.renderNamed(template.body, values)
-        : message ||
-          `Please find attached invoice ${invoice.invoiceNumber}.`;
+        : message || `Please find attached invoice ${invoice.invoiceNumber}.`;
 
       providerId = await sendMail({
         to: String(to).trim(),
@@ -392,16 +395,12 @@ exports.send = wrap(async (req, res) => {
       log.status = "sent";
       log.billable = false;
       log.costPaise = 0;
-    }
+    } else {
+      /* ============================================================
+         WHATSAPP SENDING
+      ============================================================ */
 
-    /* ============================================================
-       WHATSAPP SENDING
-    ============================================================ */
-
-    else {
-      const mediaId = pdf
-        ? await wa.uploadMedia(pdf, filename)
-        : undefined;
+      const mediaId = pdf ? await wa.uploadMedia(pdf, filename) : undefined;
 
       if (template) {
         providerId = await wa.sendTemplate({
@@ -411,7 +410,7 @@ exports.send = wrap(async (req, res) => {
           mediaId,
           filename,
           params: (template.variableKeys || []).map(
-            (key) => values[key] ?? ""
+            (key) => values[key] ?? "",
           ),
         });
       } else if (mediaId) {
@@ -469,10 +468,7 @@ exports.send = wrap(async (req, res) => {
         ? "Customer has not messaged in 24 hours. Use an approved WhatsApp template."
         : error.message || "Unable to send message";
 
-    throw fail(
-      error.status === 401 ? 502 : 400,
-      hint
-    );
+    throw fail(error.status === 401 ? 502 : 400, hint);
   }
 });
 
@@ -581,13 +577,10 @@ exports.stats = wrap(async (req, res) => {
     : 0;
 
   out.breakdown = Object.values(out.breakdown).sort(
-    (a, b) => b.count - a.count
+    (a, b) => b.count - a.count,
   );
 
-  return res.json({
-    success: true,
-    data: out,
-  });
+  return res.json({ success: true, data: out });
 });
 
 /* ================================================================
@@ -598,12 +591,7 @@ exports.logs = wrap(async (req, res) => {
   const tenantId = getTenantId(req);
 
   const page = Math.max(1, Number(req.query.page) || 1);
-
-  const limit = Math.min(
-    100,
-    Math.max(1, Number(req.query.limit) || 25)
-  );
-
+  const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 25));
   const start = periodStart(req.query.period || "30d");
 
   const filter = {
@@ -652,21 +640,13 @@ exports.getSettings = wrap(async (req, res) => {
   const tenantId = getTenantId(req);
   const settings = await getSettings(tenantId);
 
-  return res.json({
-    success: true,
-    data: settings,
-  });
+  return res.json({ success: true, data: settings });
 });
 
 exports.saveSettings = wrap(async (req, res) => {
   const tenantId = getTenantId(req);
 
-  const {
-    mode,
-    provider,
-    businessNumber,
-    rates,
-  } = req.body || {};
+  const { mode, provider, businessNumber, rates } = req.body || {};
 
   const settings = await getSettings(tenantId);
 
@@ -692,10 +672,7 @@ exports.saveSettings = wrap(async (req, res) => {
 
   await settings.save();
 
-  return res.json({
-    success: true,
-    data: settings,
-  });
+  return res.json({ success: true, data: settings });
 });
 
 /* ================================================================
@@ -705,10 +682,7 @@ exports.saveSettings = wrap(async (req, res) => {
 exports.listTemplates = wrap(async (req, res) => {
   const tenantId = getTenantId(req);
 
-  const filter = {
-    tenantId,
-    isDeleted: false,
-  };
+  const filter = { tenantId, isDeleted: false };
 
   if (req.query.channel) {
     filter.channel = req.query.channel;
@@ -748,10 +722,7 @@ exports.createTemplate = wrap(async (req, res) => {
   } = req.body || {};
 
   if (!label || !body) {
-    throw fail(
-      400,
-      "Template name and message body are required"
-    );
+    throw fail(400, "Template name and message body are required");
   }
 
   if (!["whatsapp", "email"].includes(channel)) {
@@ -764,15 +735,10 @@ exports.createTemplate = wrap(async (req, res) => {
 
   const variableKeys = T.keysIn(body);
 
-  const unknown = variableKeys.filter(
-    (key) => !T.VARIABLES[key]
-  );
+  const unknown = variableKeys.filter((key) => !T.VARIABLES[key]);
 
   if (unknown.length) {
-    throw fail(
-      400,
-      `Unknown variables: ${unknown.join(", ")}`
-    );
+    throw fail(400, `Unknown variables: ${unknown.join(", ")}`);
   }
 
   const name = String(label)
@@ -805,7 +771,7 @@ exports.createTemplate = wrap(async (req, res) => {
     if (/^\s*{{/.test(body) || /}}\s*$/.test(body)) {
       throw fail(
         400,
-        "A WhatsApp template cannot start or end with a variable. Add text around it."
+        "A WhatsApp template cannot start or end with a variable. Add text around it.",
       );
     }
 
@@ -824,24 +790,16 @@ exports.createTemplate = wrap(async (req, res) => {
 
     doc.metaTemplateId = result.id;
 
-    doc.status = String(
-      result.status || "PENDING"
-    ).toUpperCase();
+    doc.status = String(result.status || "PENDING").toUpperCase();
   }
 
   try {
     const saved = await MessageTemplate.create(doc);
 
-    return res.status(201).json({
-      success: true,
-      data: saved,
-    });
+    return res.status(201).json({ success: true, data: saved });
   } catch (error) {
     if (error.code === 11000) {
-      throw fail(
-        409,
-        "A template with this name already exists"
-      );
+      throw fail(409, "A template with this name already exists");
     }
 
     throw error;
@@ -855,7 +813,7 @@ exports.createTemplate = wrap(async (req, res) => {
 exports.syncTemplate = wrap(async (req, res) => {
   const tenantId = getTenantId(req);
 
-  if (!mongoose.Types.ObjectId.isValid(String(req.params.id))) {
+  if (!isObjectId(req.params.id)) {
     throw fail(400, "Invalid template ID");
   }
 
@@ -870,32 +828,23 @@ exports.syncTemplate = wrap(async (req, res) => {
   }
 
   if (template.channel !== "whatsapp") {
-    return res.json({
-      success: true,
-      data: template,
-    });
+    return res.json({ success: true, data: template });
   }
 
   const remote = await wa.getTemplateStatus(template.name);
 
   if (remote) {
-    template.status = String(
-      remote.status || "PENDING"
-    ).toUpperCase();
+    template.status = String(remote.status || "PENDING").toUpperCase();
 
     template.rejectedReason =
-      remote.rejected_reason &&
-      remote.rejected_reason !== "NONE"
+      remote.rejected_reason && remote.rejected_reason !== "NONE"
         ? remote.rejected_reason
         : undefined;
 
     await template.save();
   }
 
-  return res.json({
-    success: true,
-    data: template,
-  });
+  return res.json({ success: true, data: template });
 });
 
 /* ================================================================
@@ -905,7 +854,7 @@ exports.syncTemplate = wrap(async (req, res) => {
 exports.deleteTemplate = wrap(async (req, res) => {
   const tenantId = getTenantId(req);
 
-  if (!mongoose.Types.ObjectId.isValid(String(req.params.id))) {
+  if (!isObjectId(req.params.id)) {
     throw fail(400, "Invalid template ID");
   }
 
@@ -919,15 +868,9 @@ exports.deleteTemplate = wrap(async (req, res) => {
     throw fail(404, "Template not found");
   }
 
-  if (
-    template.channel === "whatsapp" &&
-    template.status !== "DRAFT"
-  ) {
+  if (template.channel === "whatsapp" && template.status !== "DRAFT") {
     await wa.deleteTemplate(template.name).catch((error) => {
-      console.warn(
-        "Meta template delete failed:",
-        error.message
-      );
+      console.warn("Meta template delete failed:", error.message);
     });
   }
 
@@ -936,10 +879,7 @@ exports.deleteTemplate = wrap(async (req, res) => {
 
   await template.save();
 
-  return res.json({
-    success: true,
-    message: "Template deleted",
-  });
+  return res.json({ success: true, message: "Template deleted" });
 });
 
 /* ================================================================
@@ -949,26 +889,20 @@ exports.deleteTemplate = wrap(async (req, res) => {
 exports.previewTemplate = wrap(async (req, res) => {
   const tenantId = getTenantId(req);
 
-  const {
-    invoiceId,
-    invoiceNumber,
-    body,
-    subject,
-  } = req.body || {};
+  const { invoiceId, invoiceNumber, body, subject } = req.body || {};
 
   let invoice = null;
 
   if (invoiceId || invoiceNumber) {
     invoice = await findInvoiceForShare({
+      SalesInvoice: getSalesInvoiceModel(req),
       tenantId,
       invoiceId,
       invoiceNumber,
     });
   }
 
-  const values = invoice
-    ? T.buildValues(invoice)
-    : T.SAMPLES;
+  const values = invoice ? T.buildValues(invoice) : T.SAMPLES;
 
   return res.json({
     success: true,
