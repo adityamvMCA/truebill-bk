@@ -615,6 +615,22 @@ const menus = [
         "reports.accounting",
         ROLES.MANAGEMENT,
       ),
+        child(
+      "reports-ledger-insights",
+      "Ledger Insights",
+      "ChartNoAxesCombined",
+      "/accounting/ledger-insights",
+      "reports.accounting",
+      ROLES.MANAGEMENT,
+    ),
+    child(
+      "reports-ledger-statement",
+      "Ledger Statement",
+      "BookOpen",
+      "/accounting/ledger/:ledgerCode",
+      "reports.accounting",
+      ROLES.MANAGEMENT,
+    ),
     ],
   },
 

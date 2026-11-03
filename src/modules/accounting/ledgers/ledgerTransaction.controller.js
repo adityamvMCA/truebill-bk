@@ -1,4 +1,3 @@
-
 const mongoose = require("mongoose");
 
 const {
@@ -9,10 +8,7 @@ const {
   getReadyTenantConnection,
 } = require("../../../tenancy/tenantConnectionManager");
 
-const {
-  rupeesToPaise,
-  paiseToRupees,
-} = require("../journals/journal.service");
+const { rupeesToPaise, paiseToRupees } = require("../journals/journal.service");
 
 const createError = (message, statusCode = 400) => {
   const error = new Error(message);
@@ -21,16 +17,13 @@ const createError = (message, statusCode = 400) => {
 };
 
 const normalizeCode = (value) =>
-  String(value || "").trim().toUpperCase();
+  String(value || "")
+    .trim()
+    .toUpperCase();
 
 const parseDate = (value, fieldName) => {
-  if (
-    typeof value !== "string" ||
-    !/^\d{4}-\d{2}-\d{2}$/.test(value)
-  ) {
-    throw createError(
-      `${fieldName} must use YYYY-MM-DD format`,
-    );
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    throw createError(`${fieldName} must use YYYY-MM-DD format`);
   }
 
   const date = new Date(`${value}T00:00:00.000Z`);
@@ -55,25 +48,14 @@ const parsePositiveInteger = (
     return fallback;
   }
 
-  if (
-    typeof value !== "string" ||
-    !/^\d+$/.test(value)
-  ) {
-    throw createError(
-      `${fieldName} must be a positive integer`,
-    );
+  if (typeof value !== "string" || !/^\d+$/.test(value)) {
+    throw createError(`${fieldName} must be a positive integer`);
   }
 
   const number = Number(value);
 
-  if (
-    !Number.isSafeInteger(number) ||
-    number < 1 ||
-    number > maximum
-  ) {
-    throw createError(
-      `${fieldName} must be between 1 and ${maximum}`,
-    );
+  if (!Number.isSafeInteger(number) || number < 1 || number > maximum) {
+    throw createError(`${fieldName} must be between 1 and ${maximum}`);
   }
 
   return number;
@@ -81,10 +63,7 @@ const parsePositiveInteger = (
 
 const ensureSafeInteger = (value) => {
   if (!Number.isSafeInteger(value)) {
-    throw createError(
-      "Ledger amount exceeds the supported range",
-      409,
-    );
+    throw createError("Ledger amount exceeds the supported range", 409);
   }
 
   return value;
@@ -97,11 +76,7 @@ const getBalanceType = (signedPaise, normalBalance) => {
   return normalBalance;
 };
 
-const findLedger = async ({
-  models,
-  tenantId,
-  code,
-}) => {
+const findLedger = async ({ models, tenantId, code }) => {
   const { Ledger, Bank } = models;
 
   const raw = String(code || "").trim();
@@ -168,9 +143,7 @@ const getLedgerTransactions = async (req, res, next) => {
   try {
     const tenant = req.tenant;
 
-    if (
-      !mongoose.isObjectIdOrHexString(tenant?._id)
-    ) {
+    if (!mongoose.isObjectIdOrHexString(tenant?._id)) {
       throw createError("Invalid tenant context", 400);
     }
 
@@ -181,9 +154,7 @@ const getLedgerTransactions = async (req, res, next) => {
     const { Journal } = models;
 
     // Explicit ObjectId for aggregation filters.
-    const tenantId = new mongoose.Types.ObjectId(
-      String(tenant._id),
-    );
+    const tenantId = new mongoose.Types.ObjectId(String(tenant._id));
 
     // Keep raw param so ObjectId ledgers (e.g. customer ledgerId) are not lost
     const rawParam = String(req.params.ledgerCode || "").trim();
@@ -192,39 +163,23 @@ const getLedgerTransactions = async (req, res, next) => {
       throw createError("ledgerCode is required");
     }
 
-    const {
-      startDate,
-      endDate,
-    } = req.query;
+    const { startDate, endDate } = req.query;
 
     const start = parseDate(startDate, "startDate");
     const end = parseDate(endDate, "endDate");
 
     if (start > end) {
-      throw createError(
-        "startDate cannot be after endDate",
-      );
+      throw createError("startDate cannot be after endDate");
     }
 
     // Exclusive upper bound, using UTC calendar days.
     const endExclusive = new Date(end);
 
-    endExclusive.setUTCDate(
-      endExclusive.getUTCDate() + 1,
-    );
+    endExclusive.setUTCDate(endExclusive.getUTCDate() + 1);
 
-    const page = parsePositiveInteger(
-      req.query.page,
-      1,
-      "page",
-    );
+    const page = parsePositiveInteger(req.query.page, 1, "page");
 
-    const limit = parsePositiveInteger(
-      req.query.limit,
-      50,
-      "limit",
-      200,
-    );
+    const limit = parsePositiveInteger(req.query.limit, 50, "limit", 200);
 
     const offset = (page - 1) * limit;
 
@@ -313,10 +268,7 @@ const getLedgerTransactions = async (req, res, next) => {
               input: "$lines",
               as: "line",
               cond: {
-                $eq: [
-                  "$$line.ledgerId",
-                  ledger._id,
-                ],
+                $eq: ["$$line.ledgerId", ledger._id],
               },
             },
           },
@@ -326,10 +278,7 @@ const getLedgerTransactions = async (req, res, next) => {
               input: "$lines",
               as: "line",
               cond: {
-                $ne: [
-                  "$$line.ledgerId",
-                  ledger._id,
-                ],
+                $ne: ["$$line.ledgerId", ledger._id],
               },
             },
           },
@@ -385,10 +334,7 @@ const getLedgerTransactions = async (req, res, next) => {
             },
           ],
 
-          rows: [
-            { $skip: offset },
-            { $limit: limit },
-          ],
+          rows: [{ $skip: offset }, { $limit: limit }],
         },
       },
     ]);
@@ -399,10 +345,7 @@ const getLedgerTransactions = async (req, res, next) => {
       creditPaise: 0,
     };
 
-    const preceding =
-      offset > 0
-        ? periodResult?.preceding?.[0]
-        : null;
+    const preceding = offset > 0 ? periodResult?.preceding?.[0] : null;
 
     const pageOpeningSignedPaise = ensureSafeInteger(
       openingSignedPaise +
@@ -412,21 +355,13 @@ const getLedgerTransactions = async (req, res, next) => {
 
     let runningSignedPaise = pageOpeningSignedPaise;
 
-    const transactions = (
-      periodResult?.rows || []
-    ).map((journal) => {
-      const debitPaise = ensureSafeInteger(
-        Number(journal.debitPaise || 0),
-      );
+    const transactions = (periodResult?.rows || []).map((journal) => {
+      const debitPaise = ensureSafeInteger(Number(journal.debitPaise || 0));
 
-      const creditPaise = ensureSafeInteger(
-        Number(journal.creditPaise || 0),
-      );
+      const creditPaise = ensureSafeInteger(Number(journal.creditPaise || 0));
 
       runningSignedPaise = ensureSafeInteger(
-        runningSignedPaise +
-          debitPaise -
-          creditPaise,
+        runningSignedPaise + debitPaise - creditPaise,
       );
 
       const counterNames = [
@@ -477,25 +412,16 @@ const getLedgerTransactions = async (req, res, next) => {
 
         // Positive = debit; negative = credit.
         balance: paiseToRupees(runningSignedPaise),
-        balanceType: getBalanceType(
-          runningSignedPaise,
-          ledger.normalBalance,
-        ),
+        balanceType: getBalanceType(runningSignedPaise, ledger.normalBalance),
       };
     });
 
-    const totalDebitPaise = ensureSafeInteger(
-      Number(totals.debitPaise || 0),
-    );
+    const totalDebitPaise = ensureSafeInteger(Number(totals.debitPaise || 0));
 
-    const totalCreditPaise = ensureSafeInteger(
-      Number(totals.creditPaise || 0),
-    );
+    const totalCreditPaise = ensureSafeInteger(Number(totals.creditPaise || 0));
 
     const closingSignedPaise = ensureSafeInteger(
-      openingSignedPaise +
-        totalDebitPaise -
-        totalCreditPaise,
+      openingSignedPaise + totalDebitPaise - totalCreditPaise,
     );
 
     const total = Number(totals.total || 0);
@@ -520,21 +446,15 @@ const getLedgerTransactions = async (req, res, next) => {
           timezone: "UTC",
         },
 
-        openingBalance: paiseToRupees(
-          openingSignedPaise,
-        ),
+        openingBalance: paiseToRupees(openingSignedPaise),
         openingBalanceType: getBalanceType(
           openingSignedPaise,
           ledger.normalBalance,
         ),
 
-        pageOpeningBalance: paiseToRupees(
-          pageOpeningSignedPaise,
-        ),
+        pageOpeningBalance: paiseToRupees(pageOpeningSignedPaise),
 
-        closingBalance: paiseToRupees(
-          closingSignedPaise,
-        ),
+        closingBalance: paiseToRupees(closingSignedPaise),
         closingBalanceType: getBalanceType(
           closingSignedPaise,
           ledger.normalBalance,
@@ -564,4 +484,6 @@ const getLedgerTransactions = async (req, res, next) => {
 
 module.exports = {
   getLedgerTransactions,
+  findLedger,
+  parseDate,
 };
