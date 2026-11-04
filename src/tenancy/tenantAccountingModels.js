@@ -1,33 +1,18 @@
 const LegacyLedger = require("../modules/accounting/ledgers/ledger.model");
-
 const LegacyLedgerGroup = require("../modules/accounting/ledger-groups/ledgerGroup.model");
-
 const LegacyAuditLog = require("../models/AuditLog");
-
 const LegacyBank = require("../modules/banks/bank.model");
-
 const LegacyJournal = require("../modules/accounting/journals/journal.model");
-
 const LegacyPurchaseBill = require("../modules/purchase-bills/purchaseBill.model");
-
 const LegacyStockMovement = require("../modules/stock-movements/stockMovement.model");
-
 const LegacySupplier = require("../modules/suppliers/supplier.model");
-
 const LegacyProduct = require("../modules/products/product.model");
-
 const LegacySalesInvoice = require("../modules/sales-invoices/salesInvoice.model");
-
 const LegacyCustomer = require("../modules/customers/customer.model");
-
 const LegacyCustomerReceipt = require("../modules/customer-receipts/customerReceipt.model");
-
 const LegacySupplierPayment = require("../modules/supplier-payments/supplierPayment.model");
-
 const LegacySalesQuotation = require("../modules/sales-quotations/salesQuotation.model");
-
 const LegacySalesOrder = require("../modules/sales-orders/salesOrder.model");
-
 const LegacyDeliveryNote = require("../modules/delivery-notes/deliveryNote.model");
 const LegacySalesReturn = require("../modules/sales-returns/salesReturn.model");
 const taxConfigurationSchema = require("../modules/accounting/taxconfiguration/taxConfiguration.model");
@@ -39,6 +24,13 @@ const LegacySupplierQuotation = require("../modules/supplier-quotations/supplier
 const LegacyPurchaseOrder = require("../modules/purchase-orders/purchaseOrder.model");
 const LegacyGoodsReceipt = require("../modules/goods-receipts/goodsReceipt.model");
 const LegacyStockTransfer = require("../modules/Inventory/stock-transfers/stockTransfer.model");
+const {
+  ProductBarcode: LegacyProductBarcode,
+  ScanSession: LegacyScanSession,
+  ScanItem: LegacyScanItem,
+  ScanEvent: LegacyScanEvent,
+  UnknownBarcode: LegacyUnknownBarcode,
+} = require("../modules/barcode/barcodeModels");
 const assertConnection = (connection) => {
   if (
     !connection ||
@@ -180,6 +172,11 @@ const getTenantAccountingModels = (connection) => {
     TdsNature: LegacyTdsNature,
     TdsDeduction: LegacyTdsDeduction,
     TdsChallan: LegacyTdsChallan,
+    ProductBarcode: LegacyProductBarcode,
+    ScanSession: LegacyScanSession,
+    ScanItem: LegacyScanItem,
+    ScanEvent: LegacyScanEvent,
+    UnknownBarcode: LegacyUnknownBarcode,
   };
 
   const models = {};
@@ -207,4 +204,3 @@ module.exports = {
   getTenantAccountingModels,
   resolveAccountingSeedModels,
 };
-

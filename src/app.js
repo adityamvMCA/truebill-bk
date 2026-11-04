@@ -60,6 +60,14 @@ const app = express();
 const hsnSacCodeRoutes = require("./modules/Inventory/hsn-sac-codes/hsnSacCode.routes");
 const webhook = require("./controllers/whatsappWebhook.controller");
 
+const http = require("http");
+const { Server } = require("socket.io");
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: { origin: process.env.CLIENT_ORIGINS?.split(","), credentials: true },
+});
+app.set("io", io);
+
 app.set("trust proxy", 1);
 
 app.use(helmet());
@@ -164,7 +172,18 @@ app.get("/api/app-version", (req, res) => {
 app.use("/api/auth", authRoutes);
 
 app.use("/api/tenants", tenantRoutes);
-
+require("./modules/barcode/scanner.socket")(io, {
+  resolveSocketContext: async (user) => {
+    const tenant = await Tenant.findById(user.tenantId); // ADAPT to how resolveTenant finds it
+    if (!tenant) throw new Error("Tenant not found");
+    const connection = getReadyTenantConnection(tenant);
+    return {
+      tenantId: tenant._id,
+      connection,
+      models: getTenantAccountingModels(connection),
+    };
+  },
+});
 app.use("/api/customers", customerRoutes);
 app.use("/api/device-tokens", deviceTokenRoutes);
 app.use("/api/ledgers", ledgerRoutes);
@@ -219,7 +238,11 @@ app.use("/api/notes", noteRoutes);
 app.use("/api/tds", tdsRoutes);
 app.use(express.json({ limit: "5mb" }));
 app.get("/api/webhooks/whatsapp", webhook.verify);
-app.post("/api/webhooks/whatsapp", express.raw({ type: "application/json" }), webhook.receive);
+app.post(
+  "/api/webhooks/whatsapp",
+  express.raw({ type: "application/json" }),
+  webhook.receive,
+);
 app.use("/api/share", require("./routes/share.routes"));
 app.use((req, res) =>
   res.status(404).json({
