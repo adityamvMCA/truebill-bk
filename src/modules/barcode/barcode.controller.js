@@ -1,8 +1,8 @@
 const mongoose = require("mongoose");
 const { getReadyTenantConnection } = require("../../tenancy/tenantConnectionManager");
 const { getTenantAccountingModels } = require("../../tenancy/tenantAccountingModels");
-const barcodeSvc = require("./services/barcode.service");
-const sessionSvc = require("./services/scanSession.service");
+const barcodeSvc = require("./barcode.service");
+const sessionSvc = require("./scanSession.service");
 
 const err = (m, s = 400) => Object.assign(new Error(m), { statusCode: s });
 
@@ -51,6 +51,34 @@ const byProduct = h(async (req, res) => {
   const { models, tenantId } = ctxOf(req);
   const productId = oid(req.params.productId, "productId");
   const data = await models.ProductBarcode.find({ tenantId, productId }).sort({ isPrimary: -1, createdAt: 1 }).lean();
+  res.json({ success: true, data });
+});
+
+/** Bulk label data: one label per product (its primary active barcode). */
+const labels = h(async (req, res) => {
+  const { models, tenantId } = ctxOf(req);
+  const ids = req.body.productIds;
+  const [rows, products] = await Promise.all([
+    models.ProductBarcode.find({ tenantId, productId: { $in: ids }, isActive: true })
+      .sort({ isPrimary: -1, createdAt: 1 }).lean(),
+    models.Product.find(
+      { tenantId, _id: { $in: ids }, isDeleted: false },
+      { name: 1, productCode: 1, salePrice: 1 },
+    ).lean(),
+  ]);
+  const pMap = new Map(products.map((p) => [String(p._id), p]));
+  const seen = new Set();
+  const data = [];
+  for (const r of rows) {
+    const key = String(r.productId);
+    if (seen.has(key) || !pMap.has(key)) continue;
+    seen.add(key);
+    const p = pMap.get(key);
+    data.push({
+      name: p.name, sku: p.productCode, barcode: r.barcode, barcodeType: r.barcodeType,
+      packagingName: r.packagingName, conversionQuantity: r.conversionQuantity, price: p.salePrice,
+    });
+  }
   res.json({ success: true, data });
 });
 
@@ -143,6 +171,6 @@ const syncScans = h(async (req, res) => {
 });
 
 module.exports = {
-  lookup, catalog, register, generateInternal, byProduct, deactivate, unknownList, unknownCreate,
+  lookup, catalog, register, generateInternal, byProduct, labels, deactivate, unknownList, unknownCreate,
   createSession, refreshJoinToken, sessionItems, closeSession, syncScans,
 };

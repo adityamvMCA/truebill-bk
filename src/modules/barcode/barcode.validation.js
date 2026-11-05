@@ -36,6 +36,10 @@ const syncSchema = Joi.object({
   ).required(),
 }).unknown(false);
 
+const labelsSchema = Joi.object({
+  productIds: Joi.array().min(1).max(500).items(objectId.required()).required(),
+}).unknown(false);
+
 const validate = (schema) => (req, res, next) => {
   const { error, value } = schema.validate(req.body ?? {}, { abortEarly: false, convert: true });
   if (error) {
@@ -53,4 +57,5 @@ module.exports = {
   validateInternal: validate(internalSchema),
   validateSession: validate(sessionSchema),
   validateSync: validate(syncSchema),
+  validateLabels: validate(labelsSchema),
 };

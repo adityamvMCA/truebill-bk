@@ -51,7 +51,7 @@ const getSessionItems = async ({ models, tenantId, sessionId, limit = 500 }) => 
   const ids = items.map((i) => i.productId);
   const products = await models.Product.find(
     { tenantId, _id: { $in: ids } },
-    { name: 1, productCode: 1, salePrice: 1, purchasePrice: 1, unit: 1 },
+    { name: 1, productCode: 1, type: 1, salePrice: 1, purchasePrice: 1, unit: 1, gstRate: 1, status: 1 },
   ).lean();
   const m = new Map(products.map((p) => [String(p._id), p]));
   return items.map((i) => ({ ...i, product: m.get(String(i.productId)) || null }));

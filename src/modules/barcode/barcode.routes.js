@@ -14,6 +14,7 @@ const write = requirePermission("product.update");
 router.get("/lookup/:barcode", view, c.lookup);
 router.get("/catalog", view, c.catalog);
 router.get("/product/:productId", view, c.byProduct);
+router.post("/labels", view, v.validateLabels, c.labels);
 router.post("/", write, v.validateRegister, c.register);
 router.post("/internal/:productId", write, v.validateInternal, c.generateInternal);
 router.patch("/:id/deactivate", write, c.deactivate);

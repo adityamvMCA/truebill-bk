@@ -32,6 +32,12 @@ const validateBarcode = (raw) => {
   return { code, type };
 };
 
+// fields the scanner / sales order needs from a product
+const PRODUCT_FIELDS = {
+  name: 1, productCode: 1, type: 1, unit: 1,
+  salePrice: 1, purchasePrice: 1, gstRate: 1, status: 1,
+};
+
 /* ---- lookup: single indexed read, projection only ---- */
 const lookupBarcode = async ({ models, tenantId, barcode }) => {
   const { code } = validateBarcode(barcode);
@@ -43,7 +49,7 @@ const lookupBarcode = async ({ models, tenantId, barcode }) => {
 
   const product = await models.Product.findOne(
     { _id: map.productId, tenantId, isDeleted: false },
-    { name: 1, productCode: 1, unit: 1, salePrice: 1, purchasePrice: 1, gstRate: 1, status: 1 },
+    PRODUCT_FIELDS,
   ).lean();
   if (!product) return null;
   return { mapping: map, product };
@@ -115,7 +121,7 @@ const catalogPage = async ({ models, tenantId, after, limit = 5000 }) => {
   const ids = [...new Set(rows.map((r) => String(r.productId)))];
   const products = await models.Product.find(
     { tenantId, _id: { $in: ids }, isDeleted: false },
-    { name: 1, productCode: 1, unit: 1, salePrice: 1, purchasePrice: 1 },
+    PRODUCT_FIELDS,
   ).lean();
   const pMap = new Map(products.map((p) => [String(p._id), p]));
 
