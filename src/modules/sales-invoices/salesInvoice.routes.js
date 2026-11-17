@@ -19,6 +19,11 @@ const {
 } = require("./salesInvoice.controller");
 
 const {
+  getBillProfitReport,
+  getBillProfitByNumber,
+} = require("./salesInvoiceProfit.controller"); // NEW
+
+const {
   validateCreateSalesInvoice,
   validateUpdateSalesInvoice,
   validatePostSalesInvoice,
@@ -47,6 +52,14 @@ router.get(
   getSalesInvoices,
 );
 
+/* ---------- bill wise profit (NEW) ---------- */
+
+router.get(
+  "/reports/bill-profit",
+  requirePermission("salesInvoice.view"),
+  getBillProfitReport,
+);
+
 router.post(
   "/",
   requirePermission("salesInvoice.create"),
@@ -60,6 +73,13 @@ router.get(
   requirePermission("salesInvoice.view"),
   validateSalesInvoiceParams,
   getSalesInvoiceByNumber,
+);
+
+router.get(
+  "/number/:invoiceNumber/profit", // NEW
+  requirePermission("salesInvoice.view"),
+  validateSalesInvoiceParams,
+  getBillProfitByNumber,
 );
 
 router.put(
