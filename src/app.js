@@ -316,6 +316,7 @@ const noteRoutes = require("./modules/accounting/Note/note.routes");
 const tdsRoutes = require("./modules/accounting/tds/tds.routes");
 const hsnSacCodeRoutes = require("./modules/Inventory/hsn-sac-codes/hsnSacCode.routes");
 const auditTrailRoutes = require("./modules/accounting/audittrail/auditTrail.routes");
+const plRoutes = require("./modules/accounting/ProfitLoss/profitLoss.routes");
 const webhook = require("./controllers/whatsappWebhook.controller");
 
 // BARCODE
@@ -490,6 +491,7 @@ app.use("/api/expenses", expenseRoutes);
 app.use("/api/notes", noteRoutes);
 app.use("/api/tds", tdsRoutes);
 app.use("/api/audit-trail", auditTrailRoutes);
+app.use("/api/profit-loss", plRoutes);
 app.use(express.json({ limit: "5mb" }));
 app.get("/api/webhooks/whatsapp", webhook.verify);
 app.post(
