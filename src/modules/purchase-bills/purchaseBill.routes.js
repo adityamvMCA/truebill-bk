@@ -24,10 +24,17 @@ const {
   validatePurchaseBillPaymentsQuery,
 } = require("./purchaseBill.validation");
 
+/* ---- AI bill scanning ---- */
+const { scanBill, confirmScan } = require("./billScan.controller");
+const { uploadBillFiles } = require("./billScan.upload");
+const { validateConfirmScan } = require("./billScan.validation");
+
 const router = express.Router();
 
 router.use(verifyToken, resolveTenant);
 
+const runIf = (predicate, middleware) => (req, res, next) =>
+  predicate(req) ? middleware(req, res, next) : next();
 
 router.get(
   "/",
@@ -42,6 +49,28 @@ router.post(
   requirePermission("purchaseBill.post"),
   validateCreatePurchaseBill,
   createPurchaseBill,
+);
+
+/* Scan a bill (read-only: nothing is saved) */
+router.post(
+  "/scan",
+  requirePermission("purchaseBill.create"),
+  uploadBillFiles,
+  scanBill,
+);
+
+/* Confirm reviewed scan: creates missing supplier/products, then posts the bill */
+router.post(
+  "/scan/confirm",
+  requirePermission("purchaseBill.create"),
+  requirePermission("purchaseBill.post"),
+  validateConfirmScan,
+  runIf((req) => req.body.supplier.mode === "NEW", requirePermission("supplier.create")),
+  runIf(
+    (req) => req.body.items.some((item) => item.product.mode === "NEW"),
+    requirePermission("product.create"),
+  ),
+  confirmScan,
 );
 
 router.get(
@@ -73,6 +102,7 @@ router.delete(
   validatePurchaseBillParams,
   deletePurchaseBill,
 );
+
 router.get(
   "/number/:billNumber/payments",
   requirePermission("purchaseBill.view"),
