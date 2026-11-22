@@ -274,6 +274,7 @@ const deviceTokenRoutes = require("./routes/deviceTokenRoutes");
 const notificationPreferenceRoutes = require("./routes/notificationPreferenceRoutes");
 const menuRoutes = require("./routes/menuRoutes");
 const appUpdateRoutes = require("./routes/appUpdateRoutes");
+const developerEmailRoutes = require("./routes/developerEmail.routes");
 const accountingRoutes = require("./modules/accounting/accounting.routes");
 const productRoutes = require("./modules/products/product.routes");
 const stockMovementRoutes = require("./modules/stock-movements/stockMovement.routes");
@@ -459,6 +460,7 @@ app.use("/api/notifications", notificationRoutes);
 app.use("/api/notification-preferences", notificationPreferenceRoutes);
 app.use("/api/menus", menuRoutes);
 app.use("/api/app-update", appUpdateRoutes);
+app.use("/api/developer/emails", developerEmailRoutes);
 app.use("/api/accounting", accountingRoutes);
 app.use("/api/products", productRoutes);
 app.use("/api/barcodes", barcodeRoutes); // BARCODE: REST routes (this was missing -> 404)

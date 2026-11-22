@@ -18,6 +18,7 @@ const { getNextSequence } = require("../utils/sequenceGenerator");
 const { getRolePermissions } = require("../utils/permissions");
 
 const { PLANS: SUBSCRIPTION_PLANS } = require("../config/subscriptionPlans");
+const emailNotificationService = require("../services/email/emailNotificationService");
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -962,6 +963,57 @@ const createTenant = async (req, res) => {
       await activationSession.endSession();
     }
 
+    // Automatically dispatch welcome email & trial notification (non-blocking)
+    try {
+      const loginUrl = process.env.APP_URL ? `${process.env.APP_URL}/login` : "https://app.trustiq.in/login";
+      emailNotificationService
+        .sendWelcomeEmail(activeAdmin.email, {
+          userName: activeAdmin.name,
+          companyName: readyTenant.businessName || "Your Organization",
+          email: activeAdmin.email,
+          loginUrl,
+        })
+        .catch((err) =>
+          console.error("[Email] Failed to dispatch welcome email to tenant admin:", err.message),
+        );
+
+      if (
+        readyTenant.status === "trial" ||
+        String(readyTenant.subscriptionPlan || "").toLowerCase().includes("trial")
+      ) {
+        const trialDays = readyTenant.subscriptionEnd
+          ? Math.max(
+              1,
+              Math.ceil(
+                (new Date(readyTenant.subscriptionEnd) - Date.now()) /
+                  (1000 * 60 * 60 * 24),
+              ),
+            )
+          : 14;
+
+        emailNotificationService
+          .sendFreeTrialStarted(activeAdmin.email, {
+            userName: activeAdmin.name,
+            companyName: readyTenant.businessName,
+            planName: readyTenant.subscriptionPlan || "Standard Free Trial",
+            trialDays,
+            expiresOn: readyTenant.subscriptionEnd
+              ? new Date(readyTenant.subscriptionEnd).toLocaleDateString("en-IN", {
+                  day: "2-digit",
+                  month: "short",
+                  year: "numeric",
+                })
+              : "14 days from registration",
+            loginUrl,
+          })
+          .catch((err) =>
+            console.error("[Email] Failed to dispatch trial started email:", err.message),
+          );
+      }
+    } catch (mailErr) {
+      console.error("[Email] Non-blocking error triggering tenant welcome emails:", mailErr.message);
+    }
+
     return res.status(201).json({
       success: true,
       message:
@@ -1335,10 +1387,29 @@ const createTenantUser = async (req, res) => {
       isActive: true,
     });
 
+    const publicUser = toPublicUser(user);
+
+    // Automatically dispatch welcome email to newly created tenant user (non-blocking)
+    try {
+      const loginUrl = process.env.APP_URL ? `${process.env.APP_URL}/login` : "https://app.trustiq.in/login";
+      emailNotificationService
+        .sendWelcomeEmail(publicUser.email, {
+          userName: publicUser.name,
+          companyName: tenant.businessName || "Your Organization",
+          email: publicUser.email,
+          loginUrl,
+        })
+        .catch((err) =>
+          console.error("[Email] Failed to dispatch welcome email to tenant user:", err.message),
+        );
+    } catch (mailErr) {
+      console.error("[Email] Non-blocking error triggering tenant user welcome email:", mailErr.message);
+    }
+
     return res.status(201).json({
       success: true,
       message: "User created successfully",
-      user: toPublicUser(user),
+      user: publicUser,
     });
   } catch (error) {
     if (error.code === 11000) {

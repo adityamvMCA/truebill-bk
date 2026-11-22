@@ -41,4 +41,24 @@ router.post(
   },
 );
 
+/* GET /documents/:docType/:ref/link */
+router.get("/:docType/:ref/link", async (req, res, next) => {
+  try {
+    const { createDocToken } = require("./documentToken");
+    const ref = String(req.params.ref || "").trim();
+    const token = createDocToken({
+      tenantId: req.tenant._id || req.tenant.id,
+      docType: req.params.docType,
+      ref,
+      ttlMinutes: 90 * 24 * 60,
+    });
+    const frontendBase = (process.env.FRONTEND_URL || "http://localhost:5173").replace(/\/$/, "");
+    const url = `${frontendBase}/print/${req.params.docType}/${encodeURIComponent(token)}`;
+
+    return res.json({ success: true, url, token });
+  } catch (error) {
+    next(error);
+  }
+});
+
 module.exports = router;

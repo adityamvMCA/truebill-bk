@@ -8,7 +8,7 @@ const secret = () => {
 const sign = (body) =>
   crypto.createHmac("sha256", secret()).update(body).digest("base64url");
 
-const createDocToken = ({ tenantId, docType, ref, ttlMinutes = 10 }) => {
+const createDocToken = ({ tenantId, docType, ref, ttlMinutes = 90 * 24 * 60 }) => {
   const body = Buffer.from(
     JSON.stringify({
       t: String(tenantId),

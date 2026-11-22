@@ -120,14 +120,45 @@ const shareDocumentOnWhatsApp = async ({
     const filename = def.filename(doc);
     const mediaId = await uploadMedia({ buffer: pdf, filename, creds });
 
-    const { messageId } = await sendTemplate({
-      to,
-      templateName: def.whatsappTemplate,
-      language: template?.language || "en",
-      bodyVariables: keys.map((k) => values[k]),
-      header: { type: "document", id: mediaId, filename },
-      creds,
-    });
+    let messageId;
+    let bodyVariables = keys.map((k) => values[k]);
+
+    try {
+      const sent = await sendTemplate({
+        to,
+        templateName: def.whatsappTemplate,
+        language: template?.language || "en",
+        bodyVariables,
+        header: { type: "document", id: mediaId, filename },
+        creds,
+      });
+      messageId = sent.messageId;
+    } catch (sendErr) {
+      // Auto-recover if Meta reports parameter count mismatch (#132000)
+      const details = sendErr?.meta?.error_data?.details || sendErr?.message || "";
+      const match = details.match(/expected number of params \((\d+)\)/i);
+      if (sendErr?.meta?.code === 132000 && match && match[1]) {
+        const expectedCount = parseInt(match[1], 10);
+        console.warn(
+          `[share] Parameter mismatch for ${def.whatsappTemplate}. Auto-adjusting from ${bodyVariables.length} to ${expectedCount}`,
+        );
+        const adjusted = [...bodyVariables];
+        while (adjusted.length < expectedCount) adjusted.push("-");
+        if (adjusted.length > expectedCount) adjusted.length = expectedCount;
+
+        const retrySent = await sendTemplate({
+          to,
+          templateName: def.whatsappTemplate,
+          language: template?.language || "en",
+          bodyVariables: adjusted,
+          header: { type: "document", id: mediaId, filename },
+          creds,
+        });
+        messageId = retrySent.messageId;
+      } else {
+        throw sendErr;
+      }
+    }
 
     const rate = settings?.rates?.whatsapp?.[def.messageKind] ?? 0;
     await MessageLog.create({

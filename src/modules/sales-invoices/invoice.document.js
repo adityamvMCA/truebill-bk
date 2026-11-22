@@ -24,7 +24,6 @@ module.exports = {
     "invoiceNumber",
     "amount",
     "dueDate",
-    "companyName",
   ],
 
   async load({ models, tenantId, ref }) {
@@ -58,7 +57,12 @@ module.exports = {
       tenantId,
     }).lean();
     // Rename to your Customer schema fields
-    return customer?.whatsappNumber || customer?.mobile || customer?.phone;
+    return (
+      customer?.whatsappNumber ||
+      customer?.mobile ||
+      customer?.phone ||
+      customer?.alternatePhone
+    );
   },
 
   /* All values the approved template may use. variableKeys picks order. */

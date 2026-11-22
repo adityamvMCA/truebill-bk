@@ -15,6 +15,7 @@ const sendMail = async ({
   to,
   subject,
   text,
+  html,
   attachments = [],
 }) => {
   if (!process.env.MAIL_EMAIL || !process.env.MAIL_PASSWORD) {
@@ -25,7 +26,8 @@ const sendMail = async ({
     from: `"${process.env.MAIL_FROM_NAME || "TrustIQ ERP"}" <${process.env.MAIL_EMAIL}>`,
     to,
     subject,
-    text,
+    text: text || (html ? html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() : ""),
+    html,
     attachments,
   });
 
