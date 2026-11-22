@@ -127,6 +127,7 @@ const {
   TdsDeduction: LegacyTdsDeduction,
   TdsChallan: LegacyTdsChallan,
 } = require("../modules/accounting/tds/tds.models");
+const LegacyTransporter = require("../modules/transporters/transporter.model");
 const getTenantAccountingModels = (connection) => {
   assertConnection(connection);
 
@@ -147,6 +148,7 @@ const getTenantAccountingModels = (connection) => {
     SalesQuotation: LegacySalesQuotation,
     SalesOrder: LegacySalesOrder,
     DeliveryNote: LegacyDeliveryNote,
+    Transporter: LegacyTransporter,
     SalesReturn: LegacySalesReturn, // NEW
     TaxConfiguration: taxConfigurationSchema,
     BankClearing: BankClearingSchema,

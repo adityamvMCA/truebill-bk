@@ -29,6 +29,7 @@
 // const salesQuotationRoutes = require("./modules/sales-quotations/salesQuotation.routes");
 // const salesOrderRoutes = require("./modules/sales-orders/salesOrder.routes");
 // const deliveryNoteRoutes = require("./modules/delivery-notes/deliveryNote.routes");
+// const transporterRoutes = require("./modules/transporters/transporter.routes");
 // const salesReturnRoutes = require("./modules/sales-returns/salesReturn.routes");
 // const taxConfigurationRoutes = require("./modules/accounting/taxconfiguration/taxConfiguration.routes");
 // const gstSummaryRoutes = require("./modules/accounting/gstsummary/gstSummary.routes");
@@ -208,6 +209,7 @@
 // app.use("/api/sales-quotations", salesQuotationRoutes);
 // app.use("/api/sales-orders", salesOrderRoutes);
 // app.use("/api/delivery-notes", deliveryNoteRoutes);
+// app.use("/api/transporters", transporterRoutes);
 // app.use("/api/sales-returns", salesReturnRoutes);
 // app.use("/api/tax-configuration", taxConfigurationRoutes);
 // app.use("/api/gst-summary", gstSummaryRoutes);
@@ -255,7 +257,6 @@
 
 // module.exports = app;
 
-
 const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
@@ -287,6 +288,7 @@ const outstandingRoutes = require("./modules/outstanding/outstanding.routes");
 const salesQuotationRoutes = require("./modules/sales-quotations/salesQuotation.routes");
 const salesOrderRoutes = require("./modules/sales-orders/salesOrder.routes");
 const deliveryNoteRoutes = require("./modules/delivery-notes/deliveryNote.routes");
+const transporterRoutes = require("./modules/transporters/transporter.routes");
 const salesReturnRoutes = require("./modules/sales-returns/salesReturn.routes");
 const taxConfigurationRoutes = require("./modules/accounting/taxconfiguration/taxConfiguration.routes");
 const gstSummaryRoutes = require("./modules/accounting/gstsummary/gstSummary.routes");
@@ -317,14 +319,24 @@ const tdsRoutes = require("./modules/accounting/tds/tds.routes");
 const hsnSacCodeRoutes = require("./modules/Inventory/hsn-sac-codes/hsnSacCode.routes");
 const auditTrailRoutes = require("./modules/accounting/audittrail/auditTrail.routes");
 const plRoutes = require("./modules/accounting/ProfitLoss/profitLoss.routes");
+const documentShareRoutes = require("./services/documents/documentShare.routes");
+const printTemplateRoutes = require("./modules/messaging/printTemplate.routes");
+const messagingSettingsRoutes = require("./modules/messaging/messagingSettings.routes");
+const {
+  data: publicDocumentData,
+} = require("./services/documents/publicDocument.controller");
 const webhook = require("./controllers/whatsappWebhook.controller");
 
 // BARCODE
 const barcodeRoutes = require("./modules/barcode/barcode.routes");
 const registerScannerSocket = require("./modules/barcode/scanner.socket");
 const Tenant = require("./models/Tenant"); // ADAPT: path of your Tenant model
-const { getReadyTenantConnection } = require("./tenancy/tenantConnectionManager");
-const { getTenantAccountingModels } = require("./tenancy/tenantAccountingModels");
+const {
+  getReadyTenantConnection,
+} = require("./tenancy/tenantConnectionManager");
+const {
+  getTenantAccountingModels,
+} = require("./tenancy/tenantAccountingModels");
 
 const http = require("http");
 const { Server } = require("socket.io");
@@ -462,6 +474,7 @@ app.use("/api/outstanding", outstandingRoutes);
 app.use("/api/sales-quotations", salesQuotationRoutes);
 app.use("/api/sales-orders", salesOrderRoutes);
 app.use("/api/delivery-notes", deliveryNoteRoutes);
+app.use("/api/transporters", transporterRoutes);
 app.use("/api/sales-returns", salesReturnRoutes);
 app.use("/api/tax-configuration", taxConfigurationRoutes);
 app.use("/api/gst-summary", gstSummaryRoutes);
@@ -492,13 +505,23 @@ app.use("/api/notes", noteRoutes);
 app.use("/api/tds", tdsRoutes);
 app.use("/api/audit-trail", auditTrailRoutes);
 app.use("/api/profit-loss", plRoutes);
-app.use(express.json({ limit: "5mb" }));
+// Public, outside verifyToken. Only the signed token gives access.
+// Public, no login. Only the signed token gives access.
+app.get("/api/public/document-data/:token", publicDocumentData);
+app.get("/public/document-data/:token", publicDocumentData); // alias, in case the print page omits /api
+
+app.use("/api/documents", documentShareRoutes);
+app.use("/api/print-templates", printTemplateRoutes);
+app.use("/api/messaging-settings", messagingSettingsRoutes);
+// Must come BEFORE express.json(): the signature check needs the raw body
 app.get("/api/webhooks/whatsapp", webhook.verify);
 app.post(
   "/api/webhooks/whatsapp",
-  express.raw({ type: "application/json" }),
+  express.raw({ type: "*/*", limit: "2mb" }),
   webhook.receive,
 );
+app.use(express.json({ limit: "5mb" }));
+
 app.use("/api/share", require("./routes/share.routes"));
 app.use((req, res) =>
   res.status(404).json({

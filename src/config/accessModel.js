@@ -76,6 +76,7 @@ const MODULES = {
       ),
       ...p("salesInvoice", "view", "create", "update", "post", "delete"),
       ...p("salesReturn", "view", "create", "update", "delete", "post"),
+      ...p("transporter", "view", "create", "update", "delete"),
       ...p("customerReceipt", "view", "create", "post"),
     ],
   },

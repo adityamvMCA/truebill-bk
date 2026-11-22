@@ -3,31 +3,28 @@ const mongoose = require("mongoose");
 const schema = new mongoose.Schema(
   {
     tenantId: { type: mongoose.Schema.Types.ObjectId, required: true, index: true },
-    invoiceId: mongoose.Schema.Types.ObjectId,
-    invoiceNumber: String,
-    customerCode: String,
-    customerName: String,
     channel: { type: String, enum: ["whatsapp", "email"], required: true },
     kind: { type: String, enum: ["invoice", "reminder", "message"], required: true },
     mode: { type: String, enum: ["manual", "business"], default: "business" },
     to: String,
-    subject: String,
-    templateName: String,
-    providerMessageId: { type: String, index: true },
+    customerName: String,
+    customerCode: String,
+    invoiceNumber: String, // holds the document number for every document type
     status: {
       type: String,
       enum: ["queued", "sent", "delivered", "read", "failed"],
       default: "queued",
     },
-    error: String,
-    billable: { type: Boolean, default: true },
+    providerMessageId: { type: String, index: true },
+    billable: Boolean,
     pricingCategory: String,
     costPaise: { type: Number, default: 0 },
-    sentBy: mongoose.Schema.Types.ObjectId,
+    error: String,
+    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
   },
   { timestamps: true },
 );
 
-schema.index({ tenantId: 1, createdAt: -1 });
+schema.index({ tenantId: 1, channel: 1, kind: 1, invoiceNumber: 1 });
 
-module.exports = mongoose.model("MessageLog", schema);
+module.exports = mongoose.models.MessageLog || mongoose.model("MessageLog", schema);

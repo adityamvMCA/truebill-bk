@@ -1,6 +1,10 @@
 const mongoose = require("mongoose");
 
-const rate = { invoice: { type: Number, default: 0 }, reminder: { type: Number, default: 0 }, message: { type: Number, default: 0 } };
+const rate = {
+  invoice: { type: Number, default: 0 },
+  reminder: { type: Number, default: 0 },
+  message: { type: Number, default: 0 },
+};
 
 module.exports = mongoose.model(
   "MessagingSettings",
@@ -11,9 +15,15 @@ module.exports = mongoose.model(
       provider: { type: String, default: "meta" },
       businessNumber: String,
       rates: {
-        whatsapp: { ...rate, invoice: { type: Number, default: 0.12 }, reminder: { type: Number, default: 0.12 } },
+        whatsapp: {
+          ...rate,
+          invoice: { type: Number, default: 0.12 },
+          reminder: { type: Number, default: 0.12 },
+        },
         email: rate,
       },
+      /* Template the user picked per document kind: { invoice: "inv08", ... } */
+      printTemplates: { type: Map, of: String, default: {} },
     },
     { timestamps: true },
   ),

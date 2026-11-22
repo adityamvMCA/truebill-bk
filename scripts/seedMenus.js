@@ -692,6 +692,14 @@ const menus = [
         "settings.appearance",
         ROLES.ADMIN,
       ),
+       child(
+        "settings-print",
+        "Print Templates",
+        "printer",
+        "/settings/print-templates",
+        "settings.appearance",
+        ROLES.ADMIN,
+      ),
     ],
   },
 ];

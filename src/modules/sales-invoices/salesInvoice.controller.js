@@ -1,4 +1,5 @@
 const salesInvoiceService = require("./salesInvoice.service");
+const { queueDocumentShare } = require("../../services/documents/documentShare.service");
 
 const getRequestContext = (req) => ({
   tenant: req.tenant,
@@ -9,11 +10,38 @@ const getRequestContext = (req) => ({
 const getInvoiceNumber = (req) =>
   req.validatedParams?.invoiceNumber || req.params.invoiceNumber;
 
+// const createSalesInvoice = async (req, res, next) => {
+//   try {
+//     const invoice = await salesInvoiceService.createSalesInvoice({
+//       ...getRequestContext(req),
+//       payload: req.body,
+//     });
+
+//     return res.status(201).json({
+//       success: true,
+//       message:
+//         invoice.status === "POSTED"
+//           ? "Sales invoice created and posted successfully"
+//           : "Sales invoice draft created successfully",
+//       invoice,
+//     });
+//   } catch (error) {
+//     next(error);
+//   }
+// };
 const createSalesInvoice = async (req, res, next) => {
   try {
     const invoice = await salesInvoiceService.createSalesInvoice({
       ...getRequestContext(req),
       payload: req.body,
+    });
+
+    // After commit, off the request path
+    queueDocumentShare({
+      tenant: req.tenant,
+      userId: req.user.userId,
+      docType: "invoice",
+      ref: invoice.invoiceNumber,
     });
 
     return res.status(201).json({
@@ -28,7 +56,6 @@ const createSalesInvoice = async (req, res, next) => {
     next(error);
   }
 };
-
 const getSalesInvoices = async (req, res, next) => {
   try {
     const result = await salesInvoiceService.getSalesInvoices({
