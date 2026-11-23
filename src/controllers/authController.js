@@ -3,6 +3,7 @@ const jwt = require("jsonwebtoken");
 
 const User = require("../models/User");
 const Tenant = require("../models/Tenant");
+const otpService = require("../services/otpService");
 
 const { getRolePermissions } = require("../utils/permissions");
 
@@ -25,6 +26,7 @@ const publicUser = (user) => ({
   id: user._id,
   name: user.name,
   email: user.email,
+  phone: user.phone || null,
   username: user.username,
   platformRole: user.platformRole,
   role: user.role,
@@ -42,6 +44,81 @@ const getTenantForAuth = async (tenantId) => {
       "businessName clientCode status isActive subscriptionPlan subscriptionStart subscriptionEnd features limits",
     )
     .lean();
+};
+
+const completeUserLogin = async (user, res) => {
+  if (!user.isActive) {
+    return fail(res, 403, "User account is inactive");
+  }
+
+  let tenant = null;
+  let subscription = null;
+
+  if (user.tenantId) {
+    tenant = await getTenantForAuth(user.tenantId);
+
+    if (!tenant || !tenant.isActive) {
+      return fail(res, 403, "Tenant is inactive or unavailable");
+    }
+
+    const entitlements = await getEntitlements(tenant);
+
+    if (!entitlements.valid) {
+      return res.status(402).json({
+        success: false,
+        code: entitlements.reason,
+        message: "Subscription is inactive or expired",
+      });
+    }
+
+    subscription = serializeEntitlements(entitlements);
+  }
+
+  const token = jwt.sign(
+    {
+      userId: user._id,
+      platformRole: user.platformRole,
+      role: user.role,
+      tenantId: user.tenantId || null,
+      clientCode: user.clientCode || null,
+      developerCode: user.developerCode || null,
+    },
+    process.env.JWT_SECRET,
+    {
+      expiresIn: process.env.JWT_EXPIRES_IN || "24h",
+    },
+  );
+
+  await User.updateOne(
+    {
+      _id: user._id,
+    },
+    {
+      $set: {
+        lastLoginAt: new Date(),
+      },
+    },
+  );
+
+  return res.json({
+    success: true,
+    message: "Login successful",
+    token,
+    user: {
+      ...publicUser(user),
+      tenant: tenant
+        ? {
+            id: tenant._id,
+            businessName: tenant.businessName,
+            clientCode: tenant.clientCode,
+            status: tenant.status,
+            subscriptionPlan: tenant.subscriptionPlan,
+            subscriptionEnd: tenant.subscriptionEnd,
+          }
+        : null,
+    },
+    subscription,
+  });
 };
 
 const login = async (req, res) => {
@@ -78,83 +155,52 @@ const login = async (req, res) => {
       return fail(res, 401, "Invalid credentials");
     }
 
-    if (!user.isActive) {
-      return fail(res, 403, "User account is inactive");
-    }
-
-    let tenant = null;
-
-    let subscription = null;
-
-    if (user.tenantId) {
-      tenant = await getTenantForAuth(user.tenantId);
-
-      if (!tenant || !tenant.isActive) {
-        return fail(res, 403, "Tenant is inactive or unavailable");
-      }
-
-      const entitlements = await getEntitlements(tenant);
-
-      if (!entitlements.valid) {
-        return res.status(402).json({
-          success: false,
-          code: entitlements.reason,
-          message: "Subscription is inactive or expired",
-        });
-      }
-
-      subscription = serializeEntitlements(entitlements);
-    }
-
-    const token = jwt.sign(
-      {
-        userId: user._id,
-        platformRole: user.platformRole,
-        role: user.role,
-        tenantId: user.tenantId || null,
-        clientCode: user.clientCode || null,
-        developerCode: user.developerCode || null,
-      },
-      process.env.JWT_SECRET,
-      {
-        expiresIn: process.env.JWT_EXPIRES_IN || "24h",
-      },
-    );
-
-    await User.updateOne(
-      {
-        _id: user._id,
-      },
-      {
-        $set: {
-          lastLoginAt: new Date(),
-        },
-      },
-    );
-
-    return res.json({
-      success: true,
-      message: "Login successful",
-      token,
-      user: {
-        ...publicUser(user),
-        tenant: tenant
-          ? {
-              id: tenant._id,
-              businessName: tenant.businessName,
-              clientCode: tenant.clientCode,
-              status: tenant.status,
-              subscriptionPlan: tenant.subscriptionPlan,
-              subscriptionEnd: tenant.subscriptionEnd,
-            }
-          : null,
-      },
-      subscription,
-    });
+    return completeUserLogin(user, res);
   } catch (error) {
     console.error("Login error:", error);
 
     return fail(res, 500, "Login failed");
+  }
+};
+
+const sendOtp = async (req, res) => {
+  try {
+    const { phone, userId } = req.body;
+
+    if (!phone) {
+      return fail(res, 400, "Registered mobile number is required");
+    }
+
+    const result = await otpService.requestOtp({ phone, userId });
+
+    return res.json({
+      success: true,
+      ...result,
+    });
+  } catch (error) {
+    console.error("sendOtp error:", error);
+    return fail(res, 400, error.message || "Failed to send OTP");
+  }
+};
+
+const verifyOtpLogin = async (req, res) => {
+  try {
+    const { phone, otp, userId } = req.body;
+
+    if (!otp) {
+      return fail(res, 400, "OTP code is required");
+    }
+
+    const { valid, user } = await otpService.verifyOtp({ phone, otp, userId });
+
+    if (!valid || !user) {
+      return fail(res, 400, "Invalid verification request");
+    }
+
+    return completeUserLogin(user, res);
+  } catch (error) {
+    console.error("verifyOtpLogin error:", error);
+    return fail(res, 400, error.message || "OTP verification failed");
   }
 };
 
@@ -208,5 +254,7 @@ const me = async (req, res) => {
 
 module.exports = {
   login,
+  sendOtp,
+  verifyOtpLogin,
   me,
 };

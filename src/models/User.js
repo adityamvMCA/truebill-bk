@@ -16,6 +16,12 @@ const schema = new mongoose.Schema(
       trim: true,
     },
 
+    phone: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+
     password: {
       type: String,
       required: true,
@@ -85,6 +91,7 @@ const schema = new mongoose.Schema(
 );
 
 schema.index({ email: 1 }, { unique: true });
+schema.index({ phone: 1 }, { sparse: true });
 // schema.index({ username: 1 }, { unique: true, sparse: true });p
 schema.index({ tenantId: 1, email: 1 });
 schema.index({ tenantId: 1, isActive: 1 });
