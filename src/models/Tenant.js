@@ -248,6 +248,13 @@ const schema = new mongoose.Schema(
       default: null,
     },
 
+    parentTenantId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Tenant",
+      default: null,
+      index: true,
+    },
+
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",

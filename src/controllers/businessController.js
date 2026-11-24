@@ -78,21 +78,51 @@ const getMyBusinesses = async (req, res) => {
     if (dbUser?.tenantId) {
       accessibleTenantIds.add(String(dbUser.tenantId));
     }
+    if (dbUser?.primaryTenantId) {
+      accessibleTenantIds.add(String(dbUser.primaryTenantId));
+    }
     if (Array.isArray(dbUser?.tenants)) {
       dbUser.tenants.forEach((t) => {
         if (t?.tenantId) accessibleTenantIds.add(String(t.tenantId));
       });
     }
 
-    // Also include any tenants created by this user
+    // Include tenant matching user's original clientCode
+    if (dbUser?.clientCode) {
+      const byCode = await Tenant.findOne({ clientCode: dbUser.clientCode, isActive: true }).select("_id").lean();
+      if (byCode) accessibleTenantIds.add(String(byCode._id));
+    }
+
+    // Include any tenants created by this user
     const createdTenants = await Tenant.find({
       createdBy: userId,
       isActive: true,
     })
-      .select("_id")
+      .select("_id parentTenantId")
       .lean();
 
-    createdTenants.forEach((t) => accessibleTenantIds.add(String(t._id)));
+    createdTenants.forEach((t) => {
+      accessibleTenantIds.add(String(t._id));
+      if (t.parentTenantId) accessibleTenantIds.add(String(t.parentTenantId));
+    });
+
+    // Also include any subtenants of the accessible tenants or parent of accessible tenants
+    if (accessibleTenantIds.size > 0) {
+      const familyTenants = await Tenant.find({
+        $or: [
+          { parentTenantId: { $in: Array.from(accessibleTenantIds) } },
+          { _id: { $in: Array.from(accessibleTenantIds) } },
+        ],
+        isActive: true,
+      })
+        .select("_id parentTenantId")
+        .lean();
+
+      familyTenants.forEach((t) => {
+        accessibleTenantIds.add(String(t._id));
+        if (t.parentTenantId) accessibleTenantIds.add(String(t.parentTenantId));
+      });
+    }
 
     let query = {
       _id: { $in: Array.from(accessibleTenantIds) },
@@ -104,7 +134,7 @@ const getMyBusinesses = async (req, res) => {
     }
 
     const businesses = await Tenant.find(query)
-      .select("businessName businessType clientCode email phone gstNo city state status subscriptionPlan subscriptionEnd createdBy")
+      .select("businessName businessType clientCode email phone gstNo city state status subscriptionPlan subscriptionEnd createdBy parentTenantId")
       .sort({ businessName: 1 })
       .lean();
 
@@ -237,12 +267,22 @@ const createMyBusiness = async (req, res) => {
     const databaseName = getTenantDatabaseName(databaseKey);
 
     const dedicatedEnabled = process.env.TENANT_DATABASES_ENABLED === "true";
+    const mainTenantId = dbUser?.primaryTenantId || dbUser?.tenantId || req.tenantId || req.user.tenantId;
+
+    // Check if email already used by another tenant to avoid E11000 duplicate key error
+    let tenantEmail = email && EMAIL_REGEX.test(email) ? email.trim().toLowerCase() : undefined;
+    if (tenantEmail) {
+      const existingEmailTenant = await Tenant.findOne({ email: tenantEmail }).lean();
+      if (existingEmailTenant) {
+        tenantEmail = undefined;
+      }
+    }
 
     const newTenant = await Tenant.create({
       clientCode,
       businessName: String(businessName).trim(),
       businessType: String(businessType || "Trader").trim(),
-      email: email && EMAIL_REGEX.test(email) ? email.trim().toLowerCase() : undefined,
+      email: tenantEmail,
       phone: phone ? String(phone).replace(/\D/g, "").slice(-10) : undefined,
       gstNo: gstNo ? String(gstNo).trim().toUpperCase() : undefined,
       panNo: panNo ? String(panNo).trim().toUpperCase() : undefined,
@@ -255,6 +295,7 @@ const createMyBusiness = async (req, res) => {
       subscriptionEnd: subscriptionEnd || new Date(Date.now() + 365 * 86400000),
       status: "active",
       isActive: true,
+      parentTenantId: mainTenantId,
       createdBy: userId,
       databaseKey,
       databaseName,
@@ -281,16 +322,29 @@ const createMyBusiness = async (req, res) => {
       }
     }
 
-    // Link new tenant to the user
+    // Link both main company and new subcompany to the user
     await User.updateOne(
       { _id: userId },
       {
+        $set: {
+          primaryTenantId: mainTenantId,
+        },
         $addToSet: {
           tenants: {
-            tenantId: newTenant._id,
-            role: "admin",
-            isDefault: false,
-            joinedAt: new Date(),
+            $each: [
+              {
+                tenantId: mainTenantId,
+                role: dbUser.role || "admin",
+                isDefault: true,
+                joinedAt: new Date(),
+              },
+              {
+                tenantId: newTenant._id,
+                role: "admin",
+                isDefault: false,
+                joinedAt: new Date(),
+              },
+            ],
           },
         },
       }
@@ -371,7 +425,14 @@ const switchBusiness = async (req, res) => {
     const isPlatform = ["developer", "support"].includes(req.user.platformRole);
     const dbUser = await User.findById(userId).lean();
 
-    let hasAccess = isPlatform || String(tenant.createdBy) === String(userId) || String(dbUser?.tenantId) === String(tenantId);
+    let hasAccess =
+      isPlatform ||
+      String(tenant.createdBy) === String(userId) ||
+      String(dbUser?.tenantId) === String(tenantId) ||
+      String(dbUser?.primaryTenantId) === String(tenantId) ||
+      String(tenant.parentTenantId) === String(dbUser?.primaryTenantId || dbUser?.tenantId) ||
+      (dbUser?.phone && tenant.phone && String(tenant.phone).slice(-10) === String(dbUser.phone).slice(-10));
+
     if (!hasAccess && Array.isArray(dbUser?.tenants)) {
       hasAccess = dbUser.tenants.some((t) => String(t.tenantId) === String(tenantId));
     }

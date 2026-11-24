@@ -60,6 +60,13 @@ const schema = new mongoose.Schema(
       index: true,
     },
 
+    primaryTenantId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Tenant",
+      default: null,
+      index: true,
+    },
+
     tenants: [
       {
         tenantId: {
