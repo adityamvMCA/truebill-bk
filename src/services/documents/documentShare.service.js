@@ -116,9 +116,21 @@ const shareDocumentOnWhatsApp = async ({
       ? template.variableKeys
       : def.defaultVariableKeys;
 
-    const pdf = await renderDocumentPdf({ tenantId, docType, ref: number });
-    const filename = def.filename(doc);
-    const mediaId = await uploadMedia({ buffer: pdf, filename, creds });
+    const templateName = template?.name || def.whatsappTemplate;
+    const isDocHeaderTemplate = Boolean(
+      templateName.includes("pdf") ||
+      template?.hasDocumentHeader === true ||
+      template?.format === "DOCUMENT" ||
+      template?.header?.type === "document"
+    );
+
+    let header = undefined;
+    if (isDocHeaderTemplate) {
+      const pdf = await renderDocumentPdf({ tenantId, docType, ref: number });
+      const filename = def.filename(doc);
+      const mediaId = await uploadMedia({ buffer: pdf, filename, creds });
+      header = { type: "document", id: mediaId, filename };
+    }
 
     let messageId;
     let bodyVariables = keys.map((k) => values[k]);
@@ -126,10 +138,10 @@ const shareDocumentOnWhatsApp = async ({
     try {
       const sent = await sendTemplate({
         to,
-        templateName: def.whatsappTemplate,
+        templateName,
         language: template?.language || "en",
         bodyVariables,
-        header: { type: "document", id: mediaId, filename },
+        header,
         creds,
       });
       messageId = sent.messageId;
@@ -140,7 +152,7 @@ const shareDocumentOnWhatsApp = async ({
       if (sendErr?.meta?.code === 132000 && match && match[1]) {
         const expectedCount = parseInt(match[1], 10);
         console.warn(
-          `[share] Parameter mismatch for ${def.whatsappTemplate}. Auto-adjusting from ${bodyVariables.length} to ${expectedCount}`,
+          `[share] Parameter mismatch for ${templateName}. Auto-adjusting from ${bodyVariables.length} to ${expectedCount}`,
         );
         const adjusted = [...bodyVariables];
         while (adjusted.length < expectedCount) adjusted.push("-");
@@ -148,10 +160,10 @@ const shareDocumentOnWhatsApp = async ({
 
         const retrySent = await sendTemplate({
           to,
-          templateName: def.whatsappTemplate,
+          templateName,
           language: template?.language || "en",
           bodyVariables: adjusted,
-          header: { type: "document", id: mediaId, filename },
+          header,
           creds,
         });
         messageId = retrySent.messageId;

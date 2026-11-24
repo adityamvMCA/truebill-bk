@@ -347,7 +347,10 @@ exports.send = wrap(async (req, res) => {
 
     /* ---------- GENERATE PDF ---------- */
 
-    const wantsPdf = kind === "invoice" || Boolean(template?.attachPdf);
+    const wantsPdf =
+      req.body?.attachInvoicePdf === true ||
+      Boolean(template?.attachPdf) ||
+      (kind === "invoice" && req.body?.attachInvoicePdf !== false && template?.name?.includes("pdf"));
 
     const pdf = wantsPdf ? await buildInvoicePdf(invoice) : null;
 
@@ -400,7 +403,13 @@ exports.send = wrap(async (req, res) => {
          WHATSAPP SENDING
       ============================================================ */
 
-      const mediaId = pdf ? await wa.uploadMedia(pdf, filename) : undefined;
+      const isDocTemplate = Boolean(
+        template?.name?.includes("pdf") || template?.attachPdf
+      );
+      const mediaId =
+        pdf && (isDocTemplate || (!template && req.body?.attachInvoicePdf === true))
+          ? await wa.uploadMedia(pdf, filename)
+          : undefined;
 
       if (template) {
         providerId = await wa.sendTemplate({

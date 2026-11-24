@@ -173,6 +173,8 @@
 // app.use("/api/auth", authRoutes);
 
 // app.use("/api/tenants", tenantRoutes);
+// app.use("/api/business", require("./routes/business.routes"));
+// app.use("/api/branches", require("./routes/branch.routes"));
 // require("./modules/barcode/scanner.socket")(io, {
 //   resolveSocketContext: async (user) => {
 //     const tenant = await Tenant.findById(user.tenantId); // ADAPT to how resolveTenant finds it
@@ -438,6 +440,9 @@ app.get("/api/app-version", (req, res) => {
 app.use("/api/auth", authRoutes);
 
 app.use("/api/tenants", tenantRoutes);
+app.use("/api/business", require("./routes/business.routes"));
+app.use("/api/branches", require("./routes/branch.routes"));
+app.use("/api/billing", require("./routes/billing.routes"));
 
 // BARCODE: socket namespace /scanner
 registerScannerSocket(io, {

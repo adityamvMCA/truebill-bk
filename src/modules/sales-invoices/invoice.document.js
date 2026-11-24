@@ -1,3 +1,5 @@
+const { createDocToken } = require("../../services/documents/documentToken");
+
 const httpError = (message, statusCode) =>
   Object.assign(new Error(message), { statusCode, retryable: false });
 
@@ -18,12 +20,13 @@ module.exports = {
   printKind: "invoice", // key in MessagingSettings.printTemplates and the frontend template list
   messageKind: "invoice", // MessageLog.kind and the rate card key
   permission: "salesInvoice.view",
-  whatsappTemplate: "invoice_pdf_notification",
+  whatsappTemplate: "invoice_creation",
   defaultVariableKeys: [
     "customerName",
     "invoiceNumber",
-    "amount",
-    "dueDate",
+    "amountNumber",
+    "viewDetails",
+    "contact",
   ],
 
   async load({ models, tenantId, ref }) {
@@ -66,13 +69,40 @@ module.exports = {
   },
 
   /* All values the approved template may use. variableKeys picks order. */
-  variables: (doc, tenant) => ({
-    customerName: doc.customerName,
-    invoiceNumber: doc.invoiceNumber,
-    amount: inr(doc.totalAmountPaise),
-    outstanding: inr(doc.outstandingAmountPaise),
-    dueDate: dateText(doc.dueDate),
-    invoiceDate: dateText(doc.invoiceDate),
-    companyName: tenant.companyName || tenant.name || "Our Company",
-  }),
+  variables: (doc, tenant) => {
+    let viewUrl = "";
+    try {
+      const token = createDocToken({
+        tenantId: doc.tenantId,
+        docType: "invoice",
+        ref: doc.invoiceNumber,
+        ttlMinutes: 90 * 24 * 60,
+      });
+      const frontendBase = (process.env.FRONTEND_URL || "https://truebill.trustiqtech.com").replace(/\/$/, "");
+      viewUrl = `${frontendBase}/print/invoice/${encodeURIComponent(token)}`;
+    } catch (e) {
+      console.warn("Could not generate doc viewUrl:", e.message);
+    }
+
+    const companyName = tenant?.companyName || tenant?.name || "TrustIQ Tech";
+    const companyPhone = tenant?.phone || tenant?.mobile || "917204105844";
+    const cleanAmount = ((Number(doc.totalAmountPaise) || 0) / 100).toLocaleString("en-IN", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+
+    return {
+      customerName: doc.customerName,
+      invoiceNumber: doc.invoiceNumber,
+      amount: inr(doc.totalAmountPaise),
+      amountNumber: cleanAmount,
+      outstanding: inr(doc.outstandingAmountPaise),
+      dueDate: dateText(doc.dueDate),
+      invoiceDate: dateText(doc.invoiceDate),
+      companyName,
+      viewUrl,
+      viewDetails: `${companyName} | View Online: ${viewUrl}`,
+      contact: companyPhone,
+    };
+  },
 };

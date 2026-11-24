@@ -46,6 +46,35 @@ const getTenantForAuth = async (tenantId) => {
     .lean();
 };
 
+const getAccessibleTenants = async (userId, userTenantId) => {
+  try {
+    const ids = new Set();
+    if (userTenantId) ids.add(String(userTenantId));
+    const user = await User.findById(userId).lean();
+    if (Array.isArray(user?.tenants)) {
+      user.tenants.forEach((t) => t?.tenantId && ids.add(String(t.tenantId)));
+    }
+    const owned = await Tenant.find({ createdBy: userId, isActive: true })
+      .select("_id")
+      .lean();
+    owned.forEach((t) => ids.add(String(t._id)));
+    const list = await Tenant.find({ _id: { $in: Array.from(ids) }, isActive: true })
+      .select("businessName businessType clientCode status subscriptionPlan subscriptionEnd")
+      .sort({ businessName: 1 })
+      .lean();
+    return list.map((b) => ({
+      id: b._id,
+      _id: b._id,
+      businessName: b.businessName,
+      clientCode: b.clientCode,
+      status: b.status,
+      subscriptionPlan: b.subscriptionPlan,
+    }));
+  } catch {
+    return [];
+  }
+};
+
 const completeUserLogin = async (user, res) => {
   if (!user.isActive) {
     return fail(res, 403, "User account is inactive");
@@ -100,6 +129,8 @@ const completeUserLogin = async (user, res) => {
     },
   );
 
+  const businesses = await getAccessibleTenants(user._id, user.tenantId);
+
   return res.json({
     success: true,
     message: "Login successful",
@@ -116,6 +147,7 @@ const completeUserLogin = async (user, res) => {
             subscriptionEnd: tenant.subscriptionEnd,
           }
         : null,
+      businesses,
     },
     subscription,
   });
@@ -210,8 +242,13 @@ const me = async (req, res) => {
 
     let subscription = null;
 
-    if (req.user.tenantId) {
-      tenant = await getTenantForAuth(req.user.tenantId);
+    const targetTenantId =
+      req.headers["x-tenant-id"] ||
+      req.headers["x-selected-tenant-id"] ||
+      req.user.tenantId;
+
+    if (targetTenantId) {
+      tenant = await getTenantForAuth(targetTenantId);
 
       if (tenant) {
         const entitlements = await getEntitlements(tenant);
@@ -228,6 +265,9 @@ const me = async (req, res) => {
       }
     }
 
+    const userId = req.user.userId || req.user._id || req.user.id;
+    const businesses = await getAccessibleTenants(userId, targetTenantId);
+
     return res.json({
       success: true,
       user: {
@@ -242,6 +282,7 @@ const me = async (req, res) => {
               subscriptionEnd: tenant.subscriptionEnd,
             }
           : null,
+        businesses,
       },
       subscription,
     });

@@ -60,6 +60,27 @@ const schema = new mongoose.Schema(
       index: true,
     },
 
+    tenants: [
+      {
+        tenantId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "Tenant",
+        },
+        role: {
+          type: String,
+          default: "admin",
+        },
+        isDefault: {
+          type: Boolean,
+          default: false,
+        },
+        joinedAt: {
+          type: Date,
+          default: Date.now,
+        },
+      },
+    ],
+
     clientCode: {
       type: String,
       default: null,

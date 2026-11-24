@@ -1,3 +1,5 @@
+const { createDocToken } = require("./documents/documentToken");
+
 const money = (p) =>
   new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format((Number(p) || 0) / 100);
 
@@ -12,6 +14,20 @@ const VARIABLES = {
   totalAmount: (i) => money(i.totalAmountPaise),
   pendingAmount: (i) => money(i.outstandingAmountPaise),
   companyName: () => process.env.COMPANY_NAME || "Company",
+  viewUrl: (i) => {
+    try {
+      const token = createDocToken({
+        tenantId: i.tenantId,
+        docType: "invoice",
+        ref: i.invoiceNumber,
+        ttlMinutes: 90 * 24 * 60,
+      });
+      const frontendBase = (process.env.FRONTEND_URL || "https://truebill.trustiqtech.com").replace(/\/$/, "");
+      return `${frontendBase}/print/invoice/${encodeURIComponent(token)}`;
+    } catch {
+      return "";
+    }
+  },
 };
 
 const SAMPLES = {
