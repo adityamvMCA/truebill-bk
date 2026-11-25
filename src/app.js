@@ -360,6 +360,7 @@ const isAllowedOrigin = (origin) =>
   origin === "capacitor://localhost" ||
   origin === "http://localhost" ||
   origin === "https://localhost";
+  origin === "https://truebill.trustiqtech.com";
 
 const io = new Server(server, {
   cors: {
