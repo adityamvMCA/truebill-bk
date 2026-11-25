@@ -359,7 +359,7 @@ const isAllowedOrigin = (origin) =>
   allowedOrigins.includes(origin) ||
   origin === "capacitor://localhost" ||
   origin === "http://localhost" ||
-  origin === "https://localhost";
+  origin === "https://localhost" ||
   origin === "https://truebill.trustiqtech.com";
 
 const io = new Server(server, {
@@ -530,10 +530,9 @@ app.post(
   express.raw({ type: "*/*", limit: "2mb" }),
   webhook.receive,
 );
-app.use(express.json({ limit: "5mb" }));
-
 app.use("/api/share", require("./routes/share.routes"));
 app.use("/api/hr", hrRoutes);
+app.use(express.json({ limit: "5mb" }));
 app.use((req, res) =>
   res.status(404).json({
     success: false,
