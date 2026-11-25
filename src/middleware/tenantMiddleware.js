@@ -34,13 +34,18 @@ const resolveTenant = async (req, res, next) => {
       const userId = req.user.userId || req.user._id || req.user.id;
       const isOwner = String(tenant.createdBy) === String(userId);
       let isMember = false;
-      if (!isOwner) {
-        const dbUser = await User.findById(userId).select("tenants").lean();
-        if (Array.isArray(dbUser?.tenants)) {
-          isMember = dbUser.tenants.some((t) => String(t.tenantId) === String(headerTenantId));
-        }
+      const dbUser = await User.findById(userId).select("tenants role primaryTenantId").lean();
+
+      const isParentAdmin =
+        dbUser?.role === "admin" &&
+        tenant.parentTenantId &&
+        String(tenant.parentTenantId) === String(dbUser?.primaryTenantId);
+
+      if (Array.isArray(dbUser?.tenants)) {
+        isMember = dbUser.tenants.some((t) => String(t.tenantId) === String(headerTenantId));
       }
-      if (!isOwner && !isMember) {
+
+      if (!isOwner && !isMember && !isParentAdmin) {
         return res
           .status(403)
           .json({ success: false, message: "Unauthorized access to this business" });

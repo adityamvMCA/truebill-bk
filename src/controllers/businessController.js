@@ -64,85 +64,117 @@ const getMyBusinesses = async (req, res) => {
     const userId = req.user.userId || req.user._id || req.user.id;
     const isPlatform = ["developer", "support"].includes(req.user.platformRole);
 
-    let accessibleTenantIds = new Set();
-
-    if (req.user.tenantId) {
-      accessibleTenantIds.add(String(req.user.tenantId));
-    }
-
-    if (req.tenantId) {
-      accessibleTenantIds.add(String(req.tenantId));
-    }
-
     const dbUser = await User.findById(userId).lean();
-    if (dbUser?.tenantId) {
-      accessibleTenantIds.add(String(dbUser.tenantId));
-    }
-    if (dbUser?.primaryTenantId) {
-      accessibleTenantIds.add(String(dbUser.primaryTenantId));
-    }
-    if (Array.isArray(dbUser?.tenants)) {
-      dbUser.tenants.forEach((t) => {
-        if (t?.tenantId) accessibleTenantIds.add(String(t.tenantId));
-      });
+    if (!dbUser) {
+      return res.status(404).json({ success: false, message: "User not found" });
     }
 
-    // Include tenant matching user's original clientCode
-    if (dbUser?.clientCode) {
-      const byCode = await Tenant.findOne({ clientCode: dbUser.clientCode, isActive: true }).select("_id").lean();
-      if (byCode) accessibleTenantIds.add(String(byCode._id));
-    }
+    const isAdmin = dbUser.role === "admin" || !dbUser.role;
 
-    // Include any tenants created by this user
-    const createdTenants = await Tenant.find({
-      createdBy: userId,
-      isActive: true,
-    })
-      .select("_id parentTenantId")
-      .lean();
-
-    createdTenants.forEach((t) => {
-      accessibleTenantIds.add(String(t._id));
-      if (t.parentTenantId) accessibleTenantIds.add(String(t.parentTenantId));
-    });
-
-    // Also include any subtenants of the accessible tenants or parent of accessible tenants
-    if (accessibleTenantIds.size > 0) {
-      const familyTenants = await Tenant.find({
-        $or: [
-          { parentTenantId: { $in: Array.from(accessibleTenantIds) } },
-          { _id: { $in: Array.from(accessibleTenantIds) } },
-        ],
+    // 1. Non-admin employees cannot switch companies. Return ONLY their assigned tenant.
+    if (!isPlatform && !isAdmin) {
+      const singleTenant = await Tenant.findOne({
+        _id: dbUser.tenantId || req.tenantId,
         isActive: true,
       })
-        .select("_id parentTenantId")
+        .select("businessName businessType clientCode email phone gstNo city state status subscriptionPlan subscriptionEnd createdBy parentTenantId")
         .lean();
 
-      familyTenants.forEach((t) => {
-        accessibleTenantIds.add(String(t._id));
-        if (t.parentTenantId) accessibleTenantIds.add(String(t.parentTenantId));
+      return res.json({
+        success: true,
+        activeTenantId: String(singleTenant?._id || ""),
+        businesses: singleTenant
+          ? [
+              {
+                id: singleTenant._id,
+                _id: singleTenant._id,
+                businessName: singleTenant.businessName,
+                businessType: singleTenant.businessType,
+                clientCode: singleTenant.clientCode,
+                status: singleTenant.status,
+                subscriptionPlan: singleTenant.subscriptionPlan,
+                isSubCompany: Boolean(singleTenant.parentTenantId),
+                isMainCompany: !singleTenant.parentTenantId,
+              },
+            ]
+          : [],
+        planLimits: {
+          currentCount: 1,
+          maxAllowed: 1,
+          canCreateMore: false,
+          plan: "basic",
+        },
       });
     }
 
-    let query = {
-      _id: { $in: Array.from(accessibleTenantIds) },
-      isActive: true,
-    };
+    // 2. For Developer / Support (Platform)
+    if (isPlatform) {
+      const businesses = await Tenant.find({ isActive: true })
+        .select("businessName businessType clientCode email phone gstNo city state status subscriptionPlan subscriptionEnd createdBy parentTenantId")
+        .sort({ businessName: 1 })
+        .limit(50)
+        .lean();
 
-    if (isPlatform && accessibleTenantIds.size === 0) {
-      query = { isActive: true };
+      return res.json({
+        success: true,
+        activeTenantId: String(req.tenantId || req.user.tenantId || ""),
+        businesses: businesses.map((b) => ({
+          id: b._id,
+          _id: b._id,
+          businessName: b.businessName,
+          businessType: b.businessType,
+          clientCode: b.clientCode,
+          status: b.status,
+          subscriptionPlan: b.subscriptionPlan,
+          isSubCompany: Boolean(b.parentTenantId),
+          isMainCompany: !b.parentTenantId,
+        })),
+        planLimits: {
+          currentCount: businesses.length,
+          maxAllowed: null,
+          canCreateMore: true,
+          plan: "premium",
+        },
+      });
     }
 
-    const businesses = await Tenant.find(query)
+    // 3. For Company Admin (e.g. TD001):
+    // Determine the root primary company
+    let rootTenantId = dbUser.primaryTenantId ? String(dbUser.primaryTenantId) : null;
+    if (!rootTenantId) {
+      const currentT = await Tenant.findById(dbUser.tenantId || req.tenantId)
+        .select("_id parentTenantId")
+        .lean();
+      rootTenantId = currentT?.parentTenantId
+        ? String(currentT.parentTenantId)
+        : String(currentT?._id || "");
+    }
+
+    // Fetch ONLY the main company and subcompanies belonging to this main company
+    const memberSubcompanyIds = Array.isArray(dbUser.tenants)
+      ? dbUser.tenants.map((t) => t.tenantId)
+      : [];
+
+    const businesses = await Tenant.find({
+      $or: [
+        { _id: rootTenantId },
+        {
+          parentTenantId: rootTenantId,
+          $or: [
+            { createdBy: userId },
+            { _id: { $in: memberSubcompanyIds } },
+          ],
+        },
+      ],
+      isActive: true,
+    })
       .select("businessName businessType clientCode email phone gstNo city state status subscriptionPlan subscriptionEnd createdBy parentTenantId")
-      .sort({ businessName: 1 })
+      .sort({ createdAt: 1 })
       .lean();
 
-    // Check plan limits
-    const activeTenant = businesses.find(
-      (b) => String(b._id) === String(req.tenantId || req.user.tenantId)
-    ) || businesses[0];
-    const plan = (activeTenant?.subscriptionPlan || "basic").toLowerCase();
+    // Check plan limits of the root company
+    const mainTenant = businesses.find((b) => String(b._id) === String(rootTenantId)) || businesses[0];
+    const plan = (mainTenant?.subscriptionPlan || "basic").toLowerCase();
     const maxBusinesses = plan === "premium" ? null : plan === "standard" ? 3 : 1;
 
     const currentId = String(req.tenantId || req.user.tenantId || "");
@@ -159,17 +191,22 @@ const getMyBusinesses = async (req, res) => {
         businessType: b.businessType,
         clientCode: b.clientCode,
         gstNo: b.gstNo,
-        phone: b.phone,
         email: b.email,
+        phone: b.phone,
         city: b.city,
         state: b.state,
-        status: b.status || "active",
-        isActive: b.isActive !== false,
-        subscriptionPlan: b.subscriptionPlan || "basic",
+        status: b.status,
+        subscriptionPlan: b.subscriptionPlan,
         subscriptionEnd: b.subscriptionEnd,
-        isCurrent: String(b._id) === currentId,
-        isOwner: String(b.createdBy || "") === String(userId),
+        isSubCompany: Boolean(b.parentTenantId),
+        isMainCompany: String(b._id) === String(rootTenantId),
       })),
+      planLimits: {
+        currentCount: totalCount,
+        maxAllowed: maxBusinesses,
+        canCreateMore: canCreate,
+        plan,
+      },
       limits: {
         plan,
         max: maxBusinesses,
@@ -262,12 +299,34 @@ const createMyBusiness = async (req, res) => {
     }
 
     // 2. Allowed to create -> Generate client code & keys
+    const isPlatform = ["developer", "support"].includes(req.user.platformRole);
+    if (!isPlatform && dbUser.role !== "admin") {
+      return res.status(403).json({
+        success: false,
+        message: "Only the company administrator can add sub-companies",
+      });
+    }
+
+    // Determine root main company
+    let rootTenantId = dbUser.primaryTenantId ? String(dbUser.primaryTenantId) : null;
+    if (!rootTenantId) {
+      const currentT = await Tenant.findById(dbUser.tenantId || req.tenantId)
+        .select("_id parentTenantId")
+        .lean();
+      rootTenantId = currentT?.parentTenantId
+        ? String(currentT.parentTenantId)
+        : String(currentT?._id || "");
+    }
+    const mainTenant = await Tenant.findById(rootTenantId).lean();
+    if (!mainTenant) {
+      return res.status(404).json({ success: false, message: "Main company not found" });
+    }
+
     const clientCode = await getNextSequence("TRD", "PLATFORM");
     const databaseKey = clientCode.trim().toLowerCase();
     const databaseName = getTenantDatabaseName(databaseKey);
 
     const dedicatedEnabled = process.env.TENANT_DATABASES_ENABLED === "true";
-    const mainTenantId = dbUser?.primaryTenantId || dbUser?.tenantId || req.tenantId || req.user.tenantId;
 
     // Check if email already used by another tenant to avoid E11000 duplicate key error
     let tenantEmail = email && EMAIL_REGEX.test(email) ? email.trim().toLowerCase() : undefined;
@@ -290,12 +349,14 @@ const createMyBusiness = async (req, res) => {
       city: city ? String(city).trim() : undefined,
       state: state ? String(state).trim() : undefined,
       pincode: pincode ? String(pincode).trim() : undefined,
-      subscriptionPlan: plan,
-      subscriptionStart: new Date(),
-      subscriptionEnd: subscriptionEnd || new Date(Date.now() + 365 * 86400000),
+      subscriptionPlan: mainTenant.subscriptionPlan || plan,
+      subscriptionStart: mainTenant.subscriptionStart || new Date(),
+      subscriptionEnd: mainTenant.subscriptionEnd || new Date(Date.now() + 365 * 86400000),
+      features: mainTenant.features || [],
+      limits: mainTenant.limits || {},
       status: "active",
       isActive: true,
-      parentTenantId: mainTenantId,
+      parentTenantId: mainTenant._id,
       createdBy: userId,
       databaseKey,
       databaseName,
@@ -327,13 +388,13 @@ const createMyBusiness = async (req, res) => {
       { _id: userId },
       {
         $set: {
-          primaryTenantId: mainTenantId,
+          primaryTenantId: mainTenant._id,
         },
         $addToSet: {
           tenants: {
             $each: [
               {
-                tenantId: mainTenantId,
+                tenantId: mainTenant._id,
                 role: dbUser.role || "admin",
                 isDefault: true,
                 joinedAt: new Date(),
@@ -424,16 +485,38 @@ const switchBusiness = async (req, res) => {
     // Verify user authorization for this tenant
     const isPlatform = ["developer", "support"].includes(req.user.platformRole);
     const dbUser = await User.findById(userId).lean();
+    if (!dbUser) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
 
-    let hasAccess =
-      isPlatform ||
-      String(tenant.createdBy) === String(userId) ||
-      String(dbUser?.tenantId) === String(tenantId) ||
-      String(dbUser?.primaryTenantId) === String(tenantId) ||
-      String(tenant.parentTenantId) === String(dbUser?.primaryTenantId || dbUser?.tenantId) ||
-      (dbUser?.phone && tenant.phone && String(tenant.phone).slice(-10) === String(dbUser.phone).slice(-10));
+    // Determine user's root main company
+    let rootTenantId = dbUser.primaryTenantId ? String(dbUser.primaryTenantId) : null;
+    if (!rootTenantId) {
+      const currentT = await Tenant.findById(dbUser.tenantId || req.tenantId)
+        .select("_id parentTenantId")
+        .lean();
+      rootTenantId = currentT?.parentTenantId
+        ? String(currentT.parentTenantId)
+        : String(currentT?._id || "");
+    }
 
-    if (!hasAccess && Array.isArray(dbUser?.tenants)) {
+    let hasAccess = false;
+    if (isPlatform) {
+      hasAccess = true;
+    } else if (String(tenant._id) === String(rootTenantId)) {
+      // Switching back to main company
+      hasAccess = true;
+    } else if (String(tenant.parentTenantId) === String(rootTenantId)) {
+      // Switching to a subcompany of user's own main company!
+      if (
+        String(tenant.createdBy) === String(userId) ||
+        dbUser.role === "admin" ||
+        (Array.isArray(dbUser.tenants) &&
+          dbUser.tenants.some((t) => String(t.tenantId) === String(tenantId)))
+      ) {
+        hasAccess = true;
+      }
+    } else if (Array.isArray(dbUser.tenants)) {
       hasAccess = dbUser.tenants.some((t) => String(t.tenantId) === String(tenantId));
     }
 

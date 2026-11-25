@@ -48,51 +48,80 @@ const getTenantForAuth = async (tenantId) => {
 
 const getAccessibleTenants = async (userId, userTenantId) => {
   try {
-    const ids = new Set();
-    if (userTenantId) ids.add(String(userTenantId));
-
     const user = await User.findById(userId).lean();
-    if (user?.tenantId) ids.add(String(user.tenantId));
-    if (user?.primaryTenantId) ids.add(String(user.primaryTenantId));
+    if (!user) return [];
 
-    if (Array.isArray(user?.tenants)) {
-      user.tenants.forEach((t) => t?.tenantId && ids.add(String(t.tenantId)));
+    const isPlatform = ["developer", "support"].includes(user.platformRole);
+    if (isPlatform) {
+      const list = await Tenant.find({ isActive: true })
+        .select("businessName businessType clientCode status subscriptionPlan subscriptionEnd")
+        .sort({ businessName: 1 })
+        .limit(20)
+        .lean();
+      return list.map((b) => ({
+        id: b._id,
+        _id: b._id,
+        businessName: b.businessName,
+        clientCode: b.clientCode,
+        status: b.status,
+        subscriptionPlan: b.subscriptionPlan,
+      }));
     }
 
-    if (user?.clientCode) {
-      const byCode = await Tenant.findOne({ clientCode: user.clientCode, isActive: true }).select("_id").lean();
-      if (byCode) ids.add(String(byCode._id));
-    }
-
-    const owned = await Tenant.find({ createdBy: userId, isActive: true })
-      .select("_id parentTenantId")
-      .lean();
-    owned.forEach((t) => {
-      ids.add(String(t._id));
-      if (t.parentTenantId) ids.add(String(t.parentTenantId));
-    });
-
-    if (ids.size > 0) {
-      const familyTenants = await Tenant.find({
-        $or: [
-          { parentTenantId: { $in: Array.from(ids) } },
-          { _id: { $in: Array.from(ids) } },
-        ],
+    // Non-admin employees only get their single assigned company
+    if (user.role !== "admin") {
+      const assigned = await Tenant.findOne({
+        _id: user.tenantId || userTenantId,
         isActive: true,
       })
-        .select("_id parentTenantId")
+        .select("businessName businessType clientCode status subscriptionPlan subscriptionEnd parentTenantId")
         .lean();
-
-      familyTenants.forEach((t) => {
-        ids.add(String(t._id));
-        if (t.parentTenantId) ids.add(String(t.parentTenantId));
-      });
+      if (!assigned) return [];
+      return [
+        {
+          id: assigned._id,
+          _id: assigned._id,
+          businessName: assigned.businessName,
+          clientCode: assigned.clientCode,
+          status: assigned.status,
+          subscriptionPlan: assigned.subscriptionPlan,
+          isSubCompany: Boolean(assigned.parentTenantId),
+        },
+      ];
     }
 
-    const list = await Tenant.find({ _id: { $in: Array.from(ids) }, isActive: true })
-      .select("businessName businessType clientCode status subscriptionPlan subscriptionEnd")
-      .sort({ businessName: 1 })
+    // For Admin: determine root main company
+    let rootTenantId = user.primaryTenantId ? String(user.primaryTenantId) : null;
+    if (!rootTenantId) {
+      const currentT = await Tenant.findById(user.tenantId || userTenantId)
+        .select("_id parentTenantId")
+        .lean();
+      rootTenantId = currentT?.parentTenantId
+        ? String(currentT.parentTenantId)
+        : String(currentT?._id || "");
+    }
+
+    const memberSubcompanyIds = Array.isArray(user.tenants)
+      ? user.tenants.map((t) => t.tenantId)
+      : [];
+
+    const list = await Tenant.find({
+      $or: [
+        { _id: rootTenantId },
+        {
+          parentTenantId: rootTenantId,
+          $or: [
+            { createdBy: userId },
+            { _id: { $in: memberSubcompanyIds } },
+          ],
+        },
+      ],
+      isActive: true,
+    })
+      .select("businessName businessType clientCode status subscriptionPlan subscriptionEnd parentTenantId")
+      .sort({ createdAt: 1 })
       .lean();
+
     return list.map((b) => ({
       id: b._id,
       _id: b._id,
@@ -100,6 +129,7 @@ const getAccessibleTenants = async (userId, userTenantId) => {
       clientCode: b.clientCode,
       status: b.status,
       subscriptionPlan: b.subscriptionPlan,
+      isSubCompany: Boolean(b.parentTenantId),
     }));
   } catch {
     return [];

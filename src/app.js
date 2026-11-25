@@ -73,6 +73,10 @@ const webhook = require("./controllers/whatsappWebhook.controller");
 // BARCODE
 const barcodeRoutes = require("./modules/barcode/barcode.routes");
 const registerScannerSocket = require("./modules/barcode/scanner.socket");
+
+// LOGISTICS & FLEET TRACKING
+const logisticsRoutes = require("./modules/logistics/logistics.routes");
+const registerLogisticsSocket = require("./modules/logistics/logistics.socket");
 const Tenant = require("./models/Tenant"); // ADAPT: path of your Tenant model
 const {
   getReadyTenantConnection,
@@ -199,6 +203,9 @@ registerScannerSocket(io, {
   },
 });
 
+// LOGISTICS: socket namespace /logistics
+registerLogisticsSocket(io);
+
 app.use("/api/customers", customerRoutes);
 app.use("/api/device-tokens", deviceTokenRoutes);
 app.use("/api/ledgers", ledgerRoutes);
@@ -270,6 +277,7 @@ app.post(
 );
 app.use("/api/share", require("./routes/share.routes"));
 app.use("/api/hr", hrRoutes);
+app.use("/api/logistics", logisticsRoutes);
 app.use(express.json({ limit: "5mb" }));
 app.use((req, res) =>
   res.status(404).json({
