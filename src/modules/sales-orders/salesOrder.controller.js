@@ -1,6 +1,7 @@
 const salesOrderService = require(
   "./salesOrder.service",
 );
+const { queueDocumentShare } = require("../../services/documents/documentShare.service");
 
 const getRequestContext = (req) => ({
   tenant: req.tenant,
@@ -22,6 +23,14 @@ const createSalesOrder = async (
         ...getRequestContext(req),
         payload: req.validatedBody,
       });
+
+    // Auto-send WhatsApp message after the transaction commits (fire-and-forget)
+    queueDocumentShare({
+      tenant: req.tenant,
+      userId: req.user.userId,
+      docType: "salesOrder",
+      ref: order.orderNumber,
+    });
 
     return res.status(201).json({
       success: true,
@@ -239,6 +248,14 @@ const convertQuotationToSalesOrder = async (
 
         payload: req.validatedBody,
       });
+
+    // Auto-send WhatsApp message after the transaction commits (fire-and-forget)
+    queueDocumentShare({
+      tenant: req.tenant,
+      userId: req.user.userId,
+      docType: "salesOrder",
+      ref: order.orderNumber,
+    });
 
     return res.status(201).json({
       success: true,

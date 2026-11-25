@@ -6,6 +6,7 @@ const { getMessaging } = require("firebase-admin/messaging");
 
 const preferenceMap = {
   LOW_STOCK: "lowStock",
+  SALES_INVOICE: "salesInvoice",
   SALES_ORDER: "salesOrder",
   PURCHASE_ORDER: "purchaseOrder",
   PURCHASE_BILL: "purchaseBill",

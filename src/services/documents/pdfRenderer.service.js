@@ -112,4 +112,42 @@ const renderDocumentPdf = async ({ tenantId, docType, ref }) => {
   }
 };
 
-module.exports = { renderDocumentPdf };
+/* -> JPEG Buffer of the top of the invoice for WhatsApp image headers */
+const renderDocumentImage = async ({ tenantId, docType, ref }) => {
+  if (!process.env.FRONTEND_URL) throw new Error("FRONTEND_URL is missing");
+
+  const token = createDocToken({ tenantId, docType, ref, ttlMinutes: 10 });
+  const url = `${process.env.FRONTEND_URL.replace(/\/$/, "")}/print/${docType}/${encodeURIComponent(token)}`;
+
+  await acquire();
+  let page;
+  try {
+    const browser = await getBrowser();
+    page = await browser.newPage();
+    await page.setViewport({ width: 1100, height: 1400 });
+    await page.emulateMediaType("screen");
+
+    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 25000 });
+
+    try {
+      await page.waitForFunction(
+        "window.__PDF_READY__ === true || window.__PDF_ERROR__ === true",
+        { timeout: 20000 },
+      );
+    } catch {
+      /* proceed with current DOM if timeout */
+    }
+
+    const image = await page.screenshot({
+      type: "jpeg",
+      quality: 85,
+      clip: { x: 0, y: 0, width: 1100, height: 950 },
+    });
+    return Buffer.from(image);
+  } finally {
+    await page?.close().catch(() => {});
+    release();
+  }
+};
+
+module.exports = { renderDocumentPdf, renderDocumentImage };

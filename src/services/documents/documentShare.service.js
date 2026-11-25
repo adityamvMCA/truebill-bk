@@ -8,7 +8,8 @@ const {
   httpError,
 } = require("../whatsapp.service");
 const { decrypt } = require("../documents/secretBox");
-const { renderDocumentPdf } = require("./pdfRenderer.service");
+const { renderDocumentPdf, renderDocumentImage } = require("./pdfRenderer.service");
+const { createDocToken } = require("./documentToken");
 const { getDocumentType } = require("./registry");
 const {
   getTenantAccountingModels,
@@ -124,13 +125,51 @@ const shareDocumentOnWhatsApp = async ({
       template?.header?.type === "document"
     );
 
+    const isImageHeaderTemplate = Boolean(
+      templateName === "sales_invoice_bill_truebill" ||
+      template?.hasImageHeader === true ||
+      template?.format === "IMAGE" ||
+      template?.header?.type === "image"
+    );
+
     let header = undefined;
     if (isDocHeaderTemplate) {
       const pdf = await renderDocumentPdf({ tenantId, docType, ref: number });
       const filename = def.filename(doc);
       const mediaId = await uploadMedia({ buffer: pdf, filename, creds });
       header = { type: "document", id: mediaId, filename };
+    } else if (isImageHeaderTemplate) {
+      try {
+        const imgBuffer = await renderDocumentImage({ tenantId, docType, ref: number });
+        const mediaId = await uploadMedia({
+          buffer: imgBuffer,
+          filename: `${def.number(doc)}.jpg`,
+          mimeType: "image/jpeg",
+          creds,
+        });
+        header = { type: "image", id: mediaId };
+      } catch (err) {
+        console.warn("[share] screenshot failed, falling back to link:", err.message);
+        header = {
+          type: "image",
+          link: tenant?.logo || "https://truebill.trustiqtech.com/assets/bill-header.png",
+        };
+      }
     }
+
+    // Dynamic URL button parameters (template "sales_invoice_bill_truebill" has 1 URL button "Open Full Invoice")
+    let docToken = "";
+    try {
+      docToken = createDocToken({
+        tenantId,
+        docType,
+        ref: number,
+        ttlMinutes: 90 * 24 * 60,
+      });
+    } catch {
+      docToken = number;
+    }
+    const urlButtonParams = [docToken];
 
     let messageId;
     let bodyVariables = keys.map((k) => values[k]);
@@ -142,6 +181,7 @@ const shareDocumentOnWhatsApp = async ({
         language: template?.language || "en",
         bodyVariables,
         header,
+        urlButtonParams,
         creds,
       });
       messageId = sent.messageId;
@@ -164,6 +204,7 @@ const shareDocumentOnWhatsApp = async ({
           language: template?.language || "en",
           bodyVariables: adjusted,
           header,
+          urlButtonParams,
           creds,
         });
         messageId = retrySent.messageId;

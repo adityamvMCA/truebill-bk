@@ -22,11 +22,11 @@ module.exports = {
   permission: "salesInvoice.view",
   whatsappTemplate: process.env.WHATSAPP_SALES_INVOICE_TEMPLATE || "sales_invoice_bill_truebill",
   defaultVariableKeys: [
-    "customerName",
-    "invoiceNumber",
-    "amountNumber",
-    "viewDetails",
-    "contact",
+    "customerName",   // {{1}}
+    "invoiceNumber",  // {{2}}
+    "amountNumber",   // {{3}}
+    "companyName",    // {{4}}  ← business name, not the long viewDetails string
+    "contact",        // {{5}}
   ],
 
   async load({ models, tenantId, ref }) {
@@ -84,12 +84,9 @@ module.exports = {
       console.warn("Could not generate doc viewUrl:", e.message);
     }
 
-    const companyName = tenant?.companyName || tenant?.name || "TrustIQ Tech";
-    const companyPhone = tenant?.phone || tenant?.mobile || "917204105844";
-    const cleanAmount = ((Number(doc.totalAmountPaise) || 0) / 100).toLocaleString("en-IN", {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    });
+    const companyName = tenant?.businessName || tenant?.companyName || tenant?.name || "TrustIQ Tech";
+    const companyPhone = tenant?.phone || tenant?.mobile || tenant?.businessPhone || process.env.BUSINESS_PHONE || "";
+    const cleanAmount = String(Math.round((Number(doc.totalAmountPaise) || 0) / 100));
 
     return {
       customerName: doc.customerName,

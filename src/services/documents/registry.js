@@ -1,5 +1,6 @@
 const registry = {
-  invoice: require("../../modules/sales-invoices/invoice.document"),
+  invoice:    require("../../modules/sales-invoices/invoice.document"),
+  salesOrder: require("../../modules/sales-orders/salesOrder.document"),
   // delivery: require("../../modules/delivery-note/deliveryNote.document"),
 };
 
