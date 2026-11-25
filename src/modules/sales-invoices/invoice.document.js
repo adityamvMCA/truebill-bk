@@ -20,7 +20,7 @@ module.exports = {
   printKind: "invoice", // key in MessagingSettings.printTemplates and the frontend template list
   messageKind: "invoice", // MessageLog.kind and the rate card key
   permission: "salesInvoice.view",
-  whatsappTemplate: "invoice_creation",
+  whatsappTemplate: process.env.WHATSAPP_SALES_INVOICE_TEMPLATE || "sales_invoice_bill_truebill",
   defaultVariableKeys: [
     "customerName",
     "invoiceNumber",

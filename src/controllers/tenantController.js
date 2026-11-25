@@ -1125,6 +1125,10 @@ const updateTenant = async (req, res) => {
       city,
       state,
       pincode,
+      logo,
+      tagline,
+      upi,
+      bank,
     } = req.body;
 
     if (businessName !== undefined && !String(businessName).trim()) {
@@ -1187,6 +1191,27 @@ const updateTenant = async (req, res) => {
 
     if (pincode !== undefined) {
       tenant.pincode = businessValidation.normalizedPincode || undefined;
+    }
+
+    if (logo !== undefined) {
+      tenant.logo = String(logo || "").trim();
+    }
+
+    if (tagline !== undefined) {
+      tenant.tagline = String(tagline || "").trim();
+    }
+
+    if (upi !== undefined) {
+      tenant.upi = String(upi || "").trim();
+    }
+
+    if (bank !== undefined && typeof bank === "object" && bank !== null) {
+      tenant.bank = {
+        name: String(bank.name || bank.bankName || "").trim(),
+        accountNo: String(bank.accountNo || bank.accountNumber || "").trim(),
+        ifsc: String(bank.ifsc || bank.ifscCode || "").trim().toUpperCase(),
+        branch: String(bank.branch || "").trim(),
+      };
     }
 
     await tenant.save();

@@ -47,29 +47,68 @@ const idOf = (data) => data?.messages?.[0]?.id;
 
 /* Approved template, optional PDF header, positional body variables */
 const sendTemplate = async ({ to, name, language = "en", mediaId, filename, params = [] }) => {
-  const components = [];
+  const buildPayload = (useMedia, bodyParams) => {
+    const components = [];
 
-  if (mediaId) {
-    components.push({
-      type: "header",
-      parameters: [{ type: "document", document: { id: mediaId, filename } }],
-    });
-  }
+    if (useMedia && mediaId) {
+      components.push({
+        type: "header",
+        parameters: [{ type: "document", document: { id: mediaId, filename } }],
+      });
+    }
 
-  if (params.length) {
-    components.push({
-      type: "body",
-      parameters: params.map((text) => ({ type: "text", text: String(text) })),
-    });
-  }
+    if (bodyParams && bodyParams.length) {
+      components.push({
+        type: "body",
+        parameters: bodyParams.map((text) => ({
+          type: "text",
+          text: String(text ?? "-").replace(/\s+/g, " ").trim() || "-",
+        })),
+      });
+    }
 
-  return idOf(
-    await sendRaw({
+    return {
       to,
       type: "template",
-      template: { name, language: { code: language }, components },
-    }),
-  );
+      template: {
+        name,
+        language: { code: language },
+        ...(components.length ? { components } : {}),
+      },
+    };
+  };
+
+  try {
+    return idOf(await sendRaw(buildPayload(Boolean(mediaId), params)));
+  } catch (err) {
+    const errText = err?.message || "";
+
+    // 1. If header component was rejected (or unexpected), retry without header
+    if (mediaId && (/header/i.test(errText) || err?.code === 132000)) {
+      try {
+        return idOf(await sendRaw(buildPayload(false, params)));
+      } catch (subErr) {
+        // Fall through to parameter count adjustment
+      }
+    }
+
+    // 2. Auto-recover if Meta reports parameter count mismatch (#132000)
+    const match = errText.match(/expected number of params \((\d+)\)/i);
+    if (match && match[1]) {
+      const expectedCount = parseInt(match[1], 10);
+      const adjusted = [...params];
+      while (adjusted.length < expectedCount) adjusted.push("-");
+      if (adjusted.length > expectedCount) adjusted.length = expectedCount;
+
+      try {
+        return idOf(await sendRaw(buildPayload(Boolean(mediaId), adjusted)));
+      } catch {
+        return idOf(await sendRaw(buildPayload(false, adjusted)));
+      }
+    }
+
+    throw err;
+  }
 };
 
 /* Free-form: only delivered inside the 24h customer-service window */

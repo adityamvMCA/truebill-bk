@@ -291,22 +291,62 @@ exports.send = wrap(async (req, res) => {
   /* ---------- TEMPLATE ---------- */
 
   let template = null;
+  const defaultSalesInvoiceTemplateName =
+    process.env.WHATSAPP_SALES_INVOICE_TEMPLATE || "sales_invoice_bill_truebill";
 
   if (templateId) {
-    if (!isObjectId(templateId)) {
-      throw fail(400, "Invalid template ID");
-    }
+    if (templateId === "default_sales_invoice_bill_truebill") {
+      template = {
+        _id: "default_sales_invoice_bill_truebill",
+        name: defaultSalesInvoiceTemplateName,
+        label: "Sales Invoice (sales_invoice_bill_truebill)",
+        channel: "whatsapp",
+        kind: "invoice",
+        language: "en",
+        status: "APPROVED",
+        attachPdf: true,
+        variableKeys: [
+          "customerName",
+          "invoiceNumber",
+          "totalAmount",
+          "viewUrl",
+          "companyName",
+        ],
+      };
+    } else {
+      if (!isObjectId(templateId)) {
+        throw fail(400, "Invalid template ID");
+      }
 
-    template = await MessageTemplate.findOne({
-      _id: templateId,
-      tenantId,
-      channel,
-      isDeleted: false,
-    }).lean();
+      template = await MessageTemplate.findOne({
+        _id: templateId,
+        tenantId,
+        channel,
+        isDeleted: false,
+      }).lean();
 
-    if (!template) {
-      throw fail(404, "Template not found");
+      if (!template) {
+        throw fail(404, "Template not found");
+      }
     }
+  } else if (channel === "whatsapp" && kind === "invoice") {
+    template = {
+      _id: "default_sales_invoice_bill_truebill",
+      name: defaultSalesInvoiceTemplateName,
+      label: "Sales Invoice (sales_invoice_bill_truebill)",
+      channel: "whatsapp",
+      kind: "invoice",
+      language: "en",
+      status: "APPROVED",
+      attachPdf: true,
+      variableKeys: [
+        "customerName",
+        "invoiceNumber",
+        "totalAmount",
+        "viewUrl",
+        "companyName",
+      ],
+    };
   }
 
   if (template && channel === "whatsapp" && template.status !== "APPROVED") {
@@ -704,6 +744,42 @@ exports.listTemplates = wrap(async (req, res) => {
   const data = await MessageTemplate.find(filter)
     .sort({ createdAt: -1 })
     .lean();
+
+  const defaultSalesInvoiceTemplateName =
+    process.env.WHATSAPP_SALES_INVOICE_TEMPLATE || "sales_invoice_bill_truebill";
+
+  const hasSalesInvoiceTemplate = data.some(
+    (t) =>
+      t.channel === "whatsapp" &&
+      t.kind === "invoice" &&
+      (t.name === defaultSalesInvoiceTemplateName || t.status === "APPROVED"),
+  );
+
+  if (
+    !hasSalesInvoiceTemplate &&
+    (!req.query.channel || req.query.channel === "whatsapp") &&
+    (!req.query.kind || req.query.kind === "invoice")
+  ) {
+    data.unshift({
+      _id: "default_sales_invoice_bill_truebill",
+      label: "Sales Invoice (sales_invoice_bill_truebill)",
+      name: defaultSalesInvoiceTemplateName,
+      channel: "whatsapp",
+      kind: "invoice",
+      language: "en",
+      category: "UTILITY",
+      status: "APPROVED",
+      attachPdf: true,
+      body: "Hello {{customerName}}, your sales invoice {{invoiceNumber}} for {{totalAmount}} from {{companyName}} is ready. View online: {{viewUrl}}",
+      variableKeys: [
+        "customerName",
+        "invoiceNumber",
+        "totalAmount",
+        "companyName",
+        "viewUrl",
+      ],
+    });
+  }
 
   return res.json({
     success: true,

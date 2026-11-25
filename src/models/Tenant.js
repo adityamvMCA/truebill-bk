@@ -87,6 +87,31 @@ const schema = new mongoose.Schema(
       trim: true,
     },
 
+    logo: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    tagline: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    upi: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    bank: {
+      name: { type: String, default: "", trim: true },
+      accountNo: { type: String, default: "", trim: true },
+      ifsc: { type: String, default: "", trim: true, uppercase: true },
+      branch: { type: String, default: "", trim: true },
+    },
+
     status: {
       type: String,
 

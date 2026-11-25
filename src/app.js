@@ -248,6 +248,7 @@
 //   webhook.receive,
 // );
 // app.use("/api/share", require("./routes/share.routes"));
+app.use("/api/hr", hrRoutes);
 // app.use((req, res) =>
 //   res.status(404).json({
 //     success: false,
@@ -325,6 +326,7 @@ const plRoutes = require("./modules/accounting/ProfitLoss/profitLoss.routes");
 const documentShareRoutes = require("./services/documents/documentShare.routes");
 const printTemplateRoutes = require("./modules/messaging/printTemplate.routes");
 const messagingSettingsRoutes = require("./modules/messaging/messagingSettings.routes");
+const hrRoutes = require("./modules/hr/hr.routes");
 const {
   data: publicDocumentData,
 } = require("./services/documents/publicDocument.controller");
@@ -530,6 +532,7 @@ app.post(
 app.use(express.json({ limit: "5mb" }));
 
 app.use("/api/share", require("./routes/share.routes"));
+app.use("/api/hr", hrRoutes);
 app.use((req, res) =>
   res.status(404).json({
     success: false,
