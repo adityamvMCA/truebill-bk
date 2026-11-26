@@ -85,6 +85,8 @@ const {
   getMyDeviceTokens,
   testFcmPush,
   createAppUpdateNotification,
+  triggerDailyStats,
+  triggerLowStock,
 } = require("../controllers/notificationController");
 
 const verifyToken = require(
@@ -152,6 +154,16 @@ router.post(
 router.post(
   "/test-fcm",
   testFcmPush,
+);
+
+router.post(
+  "/trigger-daily-stats",
+  triggerDailyStats,
+);
+
+router.post(
+  "/trigger-low-stock",
+  triggerLowStock,
 );
 
 /*

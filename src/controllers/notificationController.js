@@ -13,6 +13,11 @@ const {
   getMessaging,
 } = require("firebase-admin/messaging");
 
+const {
+  processDailyEveningStats,
+  processLowStockAlerts,
+} = require("../services/dailyEveningStatsScheduler");
+
 const isValidObjectId = (value) =>
   mongoose.isValidObjectId(value);
 
@@ -323,6 +328,14 @@ const createTypedTestNotification = async (
       },
       APP_UPDATE: {
         icon: "smartphone",
+        priority: "NORMAL",
+      },
+      SALES_INVOICE: {
+        icon: "file-text",
+        priority: "NORMAL",
+      },
+      DAILY_STATS: {
+        icon: "trending-up",
         priority: "NORMAL",
       },
     };
@@ -692,6 +705,34 @@ const testFcmPush = async (
   }
 };
 
+const triggerDailyStats = async (req, res, next) => {
+  try {
+    const { tenantId } = getRequestContext(req);
+    const result = await processDailyEveningStats({ targetTenantId: tenantId });
+    return res.status(200).json({
+      success: true,
+      message: "Daily evening stats processed successfully",
+      data: result,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const triggerLowStock = async (req, res, next) => {
+  try {
+    const { tenantId } = getRequestContext(req);
+    const result = await processLowStockAlerts({ targetTenantId: tenantId });
+    return res.status(200).json({
+      success: true,
+      message: "Low stock alerts processed successfully",
+      data: result,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   getNotifications,
   getUnreadCount,
@@ -702,4 +743,6 @@ module.exports = {
   getMyDeviceTokens,
   testFcmPush,
   createAppUpdateNotification,
+  triggerDailyStats,
+  triggerLowStock,
 };

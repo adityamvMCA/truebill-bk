@@ -12,6 +12,10 @@ const {
   startSubscriptionEmailScheduler,
 } = require("./services/email/subscriptionEmailScheduler");
 
+const {
+  startDailyEveningStatsScheduler,
+} = require("./services/dailyEveningStatsScheduler");
+
 const PORT = process.env.PORT || 5001;
 
 (async () => {
@@ -21,6 +25,8 @@ const PORT = process.env.PORT || 5001;
     initializeFirebaseAdminSafe();
 
     startSubscriptionEmailScheduler(12);
+
+    startDailyEveningStatsScheduler();
 
     app.listen(PORT, () => {
       console.log(

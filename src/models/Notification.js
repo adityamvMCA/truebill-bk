@@ -22,6 +22,7 @@ const notificationSchema = new mongoose.Schema(
       enum: [
         "LOW_STOCK",
         "SALES_ORDER",
+        "SALES_INVOICE",
         "PURCHASE_ORDER",
         "PURCHASE_BILL",
         "PAYMENT_RECEIVED",
@@ -32,6 +33,7 @@ const notificationSchema = new mongoose.Schema(
         "APP_UPDATE",
         "NEW_SUPPLIER",
         "SUPPLIER_PAYMENT",
+        "DAILY_STATS",
       ],
       index: true,
     },

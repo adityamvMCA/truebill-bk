@@ -18,6 +18,7 @@ const preferenceMap = {
   SYSTEM: "system",
   APP_UPDATE: "appUpdate",
   SUPPLIER_PAYMENT: "supplierPayment",
+  DAILY_STATS: "dailyStats",
 };
 
 const PRIORITIES = ["LOW", "NORMAL", "HIGH", "CRITICAL"];
@@ -34,6 +35,11 @@ const ANDROID_NOTIFICATION_ICONS = {
   smartphone: "ic_stat_truebill",
   "low-stock": "ic_stat_truebill",
   "sales-order": "ic_stat_truebill",
+  "sales-invoice": "ic_stat_truebill",
+  "daily-stats": "ic_stat_truebill",
+  "trending-up": "ic_stat_truebill",
+  "trending-down": "ic_stat_truebill",
+  "file-text": "ic_stat_truebill",
   "purchase-order": "ic_stat_truebill",
   payment: "ic_stat_truebill",
   "payment-overdue": "ic_stat_truebill",
@@ -41,6 +47,7 @@ const ANDROID_NOTIFICATION_ICONS = {
   customer: "ic_stat_truebill",
   system: "ic_stat_truebill",
   warning: "ic_stat_truebill",
+  boxes: "ic_stat_truebill",
 };
 
 /*
@@ -50,6 +57,7 @@ const ANDROID_NOTIFICATION_ICONS = {
 const ANDROID_NOTIFICATION_COLORS = {
   LOW_STOCK: "#F59E0B",
   SALES_ORDER: "#2563EB",
+  SALES_INVOICE: "#16A34A",
   PURCHASE_ORDER: "#059669",
   PAYMENT_RECEIVED: "#16A34A",
   PAYMENT_OVERDUE: "#DC2626",
@@ -57,6 +65,7 @@ const ANDROID_NOTIFICATION_COLORS = {
   NEW_CUSTOMER: "#6366F1",
   SYSTEM: "#475569",
   APP_UPDATE: "#7C3AED",
+  DAILY_STATS: "#7C3AED",
 };
 
 const DEFAULT_ANDROID_ICON = "ic_stat_truebill";
@@ -235,8 +244,11 @@ const sendPush = async ({ notification, preferences }) => {
       tenantId: String(notification.tenantId),
       userId: String(notification.userId),
       type: String(notification.type),
+      title: String(notification.title || ""),
+      body: String(notification.message || ""),
       route: notification.route || "",
       icon: notification.icon || "bell",
+      color: androidColor,
       priority,
       ...toFcmStringData(notification.data),
     };
@@ -261,7 +273,10 @@ const sendPush = async ({ notification, preferences }) => {
           color: androidColor,
           channelId: "default",
           sound: preferences.soundEnabled === false ? undefined : "default",
-          clickAction: "FLUTTER_NOTIFICATION_CLICK",
+          defaultSound: true,
+          defaultVibrateTimings: true,
+          visibility: "PUBLIC",
+          priority: shouldSendHighPriority(priority) ? "MAX" : "HIGH",
         },
       },
     });
