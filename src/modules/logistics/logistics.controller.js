@@ -4,6 +4,39 @@ const crypto = require("crypto");
 const Driver = require("./driver.model");
 const Trip = require("./trip.model");
 
+// Geocoding helper using OpenStreetMap Nominatim with progressive fallback
+async function geocodeAddress(address) {
+  if (!address || typeof address !== "string") return null;
+  const clean = address.trim();
+  const parts = clean.split(",").map((p) => p.trim()).filter(Boolean);
+  const candidates = [
+    clean,
+    parts.slice(-3).join(", "),
+    parts.slice(-2).join(", "),
+    parts.slice(-1)[0],
+  ];
+
+  for (const q of candidates) {
+    if (!q || q.length < 3) continue;
+    try {
+      const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=1`;
+      const res = await fetch(url, {
+        headers: { "User-Agent": "TrustIQ-ERP/1.0" },
+      });
+      const data = await res.json();
+      if (Array.isArray(data) && data[0]?.lat && data[0]?.lon) {
+        return {
+          lat: parseFloat(data[0].lat),
+          lng: parseFloat(data[0].lon),
+        };
+      }
+    } catch (err) {
+      // Continue to next fallback query
+    }
+  }
+  return null;
+}
+
 // Helper to generate driver JWT
 function generateDriverToken(driver) {
   return jwt.sign(
@@ -127,7 +160,7 @@ exports.driverStartTrip = async (req, res) => {
   try {
     const driverId = req.driver?.driverId;
     const { id } = req.params;
-    const { lat, lng } = req.body;
+    const { lat, lng, destinationLat, destinationLng } = req.body;
 
     const trip = await Trip.findOne({ _id: id, driverId, isDeleted: false });
     if (!trip) {
@@ -136,6 +169,19 @@ exports.driverStartTrip = async (req, res) => {
 
     trip.status = "STARTED";
     trip.startedAt = new Date();
+
+    // If destination coords provided or missing, resolve them so map shows the destination
+    if (destinationLat && destinationLng) {
+      trip.destination = trip.destination || {};
+      trip.destination.lat = Number(destinationLat);
+      trip.destination.lng = Number(destinationLng);
+    } else if ((!trip.destination?.lat || !trip.destination?.lng) && trip.destination?.address) {
+      const geo = await geocodeAddress(trip.destination.address);
+      if (geo) {
+        trip.destination.lat = geo.lat;
+        trip.destination.lng = geo.lng;
+      }
+    }
 
     if (lat && lng) {
       const loc = {
@@ -171,6 +217,9 @@ exports.driverStartTrip = async (req, res) => {
       io.of("/logistics")
         .to(`trip_${trip._id}`)
         .emit("trip:status_update", { tripId: trip._id, status: "STARTED", trip });
+      io.of("/logistics")
+        .to(`trip_${trip._id}`)
+        .emit("trip:status_change", { tripId: trip._id, status: "STARTED", trip });
 
       if (trip.trackingToken) {
         io.of("/logistics")
@@ -182,6 +231,9 @@ exports.driverStartTrip = async (req, res) => {
         io.of("/logistics")
           .to(`tenant_${trip.tenantId}`)
           .emit("fleet:status_update", { tripId: trip._id, status: "STARTED", trip });
+        io.of("/logistics")
+          .to(`tenant_${trip.tenantId}`)
+          .emit("trip:status_change", { tripId: trip._id, status: "STARTED", trip });
       }
     }
 
@@ -516,6 +568,17 @@ exports.createTrip = async (req, res) => {
     const tripNumber = `TRIP-${new Date().getFullYear()}-${String(count + 1).padStart(4, "0")}`;
     const trackingToken = crypto.randomBytes(16).toString("hex");
 
+    // Geocode destination if coordinates not provided
+    let finalDestLat = destinationLat ? Number(destinationLat) : null;
+    let finalDestLng = destinationLng ? Number(destinationLng) : null;
+    if ((!finalDestLat || !finalDestLng) && destinationAddress) {
+      const geo = await geocodeAddress(destinationAddress);
+      if (geo) {
+        finalDestLat = geo.lat;
+        finalDestLng = geo.lng;
+      }
+    }
+
     const trip = await Trip.create({
       tenantId,
       tripNumber,
@@ -537,8 +600,8 @@ exports.createTrip = async (req, res) => {
       },
       destination: {
         address: destinationAddress.trim(),
-        lat: destinationLat ? Number(destinationLat) : null,
-        lng: destinationLng ? Number(destinationLng) : null,
+        lat: finalDestLat,
+        lng: finalDestLng,
       },
       status: "SCHEDULED",
       trackingToken,

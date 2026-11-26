@@ -43,96 +43,118 @@ module.exports = function registerLogisticsSocket(io) {
       }
     });
 
-    // 2. Driver emits real-time GPS location
-    socket.on(
-      "driver:location",
-      async ({ tripId, driverId, tenantId, lat, lng, speed, heading, accuracy }) => {
-        try {
-          if (!lat || !lng) return;
+    // 2. Driver emits real-time GPS location (supports both driver:location and driver:location_update)
+    const handleDriverLocation = async (rawPayload) => {
+      try {
+        const payload = rawPayload || {};
+        const loc = payload.location || payload;
+        const lat = loc.lat;
+        const lng = loc.lng;
+        const tripId = payload.tripId || socket.data?.tripId;
+        const driverId = payload.driverId || socket.data?.driverId;
+        const tenantId = payload.tenantId || socket.data?.tenantId;
+        const speed = loc.speed;
+        const heading = loc.heading;
+        const accuracy = loc.accuracy;
 
-          const now = new Date();
-          const locationData = {
-            lat: Number(lat),
-            lng: Number(lng),
-            speed: Number(speed || 0),
-            heading: Number(heading || 0),
-            accuracy: Number(accuracy || 0),
-            updatedAt: now,
-          };
+        if (!lat || !lng) return;
 
-          // Broadcast to anyone listening to this trip immediately for zero latency (< 50ms)
-          if (tripId) {
-            ns.to(`trip_${tripId}`).emit("trip:location_update", {
-              tripId,
-              location: locationData,
-            });
-          }
+        const now = new Date();
+        const locationData = {
+          lat: Number(lat),
+          lng: Number(lng),
+          speed: Number(speed || 0),
+          heading: Number(heading || 0),
+          accuracy: Number(accuracy || 0),
+          updatedAt: now,
+        };
 
-          // Broadcast to fleet admin dashboard
-          const effectiveTenantId = tenantId || socket.data?.tenantId;
-          if (effectiveTenantId) {
-            ns.to(`tenant_${effectiveTenantId}`).emit("fleet:driver_update", {
-              driverId,
-              tripId,
-              location: locationData,
-            });
-          }
+        // Broadcast to anyone listening to this trip immediately for zero latency (< 50ms)
+        if (tripId) {
+          ns.to(`trip_${tripId}`).emit("trip:location_update", {
+            tripId,
+            location: locationData,
+          });
+        }
 
-          // Asynchronously persist to database
-          if (tripId) {
-            const trip = await Trip.findById(tripId);
-            if (trip) {
-              // Calculate incremental distance if there was a previous point
-              let extraKm = 0;
-              if (trip.currentLocation?.lat && trip.currentLocation?.lng) {
-                extraKm = haversineDistance(
-                  trip.currentLocation.lat,
-                  trip.currentLocation.lng,
-                  locationData.lat,
-                  locationData.lng
-                );
-                // Sanity check: ignore GPS jumps > 5km in a single ping
-                if (extraKm > 5) extraKm = 0;
-              }
+        // Broadcast to fleet admin dashboard
+        const effectiveTenantId = tenantId || socket.data?.tenantId;
+        if (effectiveTenantId) {
+          ns.to(`tenant_${effectiveTenantId}`).emit("fleet:driver_update", {
+            driverId,
+            tripId,
+            location: locationData,
+          });
+        }
 
-              trip.currentLocation = locationData;
-              trip.distanceCoveredKm = Number(
-                ((trip.distanceCoveredKm || 0) + extraKm).toFixed(2)
+        // Asynchronously persist to database
+        if (tripId) {
+          const trip = await Trip.findById(tripId);
+          if (trip) {
+            // Calculate incremental distance if there was a previous point
+            let extraKm = 0;
+            if (trip.currentLocation?.lat && trip.currentLocation?.lng) {
+              extraKm = haversineDistance(
+                trip.currentLocation.lat,
+                trip.currentLocation.lng,
+                locationData.lat,
+                locationData.lng
               );
+              // Sanity check: ignore GPS jumps > 5km in a single ping
+              if (extraKm > 5) extraKm = 0;
+            }
 
-              // Append breadcrumb
-              trip.path.push({
-                lat: locationData.lat,
-                lng: locationData.lng,
-                speed: locationData.speed,
-                heading: locationData.heading,
-                timestamp: now,
-              });
+            trip.currentLocation = locationData;
+            trip.distanceCoveredKm = Number(
+              ((trip.distanceCoveredKm || 0) + extraKm).toFixed(2)
+            );
 
-              // Keep last 1500 points to prevent document bloat
-              if (trip.path.length > 1500) {
-                trip.path = trip.path.slice(-1500);
-              }
+            // Append breadcrumb
+            trip.path.push({
+              lat: locationData.lat,
+              lng: locationData.lng,
+              speed: locationData.speed,
+              heading: locationData.heading,
+              timestamp: now,
+            });
 
-              await trip.save();
+            // Keep last 1500 points to prevent document bloat
+            if (trip.path.length > 1500) {
+              trip.path = trip.path.slice(-1500);
+            }
 
-              // Also notify via token room for public receivers
-              if (trip.trackingToken) {
-                ns.to(`token_${trip.trackingToken}`).emit(
-                  "trip:location_update",
-                  {
-                    tripId,
-                    location: locationData,
-                    distanceCoveredKm: trip.distanceCoveredKm,
-                  }
-                );
-              }
+            await trip.save();
 
-              // Also ensure tenant fleet map is updated
-              if (trip.tenantId && String(trip.tenantId) !== String(effectiveTenantId)) {
-                ns.to(`tenant_${trip.tenantId}`).emit("fleet:driver_update", {
-                  driverId,
+            // Also notify via token room for public receivers
+            if (trip.trackingToken) {
+              ns.to(`token_${trip.trackingToken}`).emit(
+                "trip:location_update",
+                {
                   tripId,
+                  location: locationData,
+                  distanceCoveredKm: trip.distanceCoveredKm,
+                }
+              );
+            }
+
+            // Also ensure tenant fleet map is updated
+            if (trip.tenantId && String(trip.tenantId) !== String(effectiveTenantId)) {
+              ns.to(`tenant_${trip.tenantId}`).emit("fleet:driver_update", {
+                driverId,
+                tripId,
+                location: locationData,
+                distanceCoveredKm: trip.distanceCoveredKm,
+              });
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Socket driver:location error:", err?.message);
+      }
+    };
+
+    socket.on("driver:location", handleDriverLocation);
+    socket.on("driver:location_update", handleDriverLocation);
                   location: locationData,
                   distanceCoveredKm: trip.distanceCoveredKm,
                 });

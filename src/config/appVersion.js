@@ -1,9 +1,9 @@
 module.exports = {
   android: {
-    latestVersion: "1.0.58",
+    latestVersion: "1.0.59",
     minimumVersion: "1.0.0",
     updateRequired: false,
     downloadUrl:
-      "https://truebillapi.trustiqtech.com/downloads/truebill-1.0.58.apk",
+      "https://truebillapi.trustiqtech.com/downloads/truebill-1.0.59.apk",
   },
 };
