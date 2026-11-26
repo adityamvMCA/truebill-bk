@@ -148,6 +148,13 @@ module.exports = function registerLogisticsSocket(io) {
             }
           }
         }
+
+        // Update driver's last known location
+        if (driverId) {
+          await Driver.findByIdAndUpdate(driverId, {
+            currentLocation: locationData,
+          });
+        }
       } catch (err) {
         console.error("Socket driver:location error:", err?.message);
       }
@@ -155,24 +162,6 @@ module.exports = function registerLogisticsSocket(io) {
 
     socket.on("driver:location", handleDriverLocation);
     socket.on("driver:location_update", handleDriverLocation);
-                  location: locationData,
-                  distanceCoveredKm: trip.distanceCoveredKm,
-                });
-              }
-            }
-          }
-
-          // Update driver's last known location
-          if (driverId) {
-            await Driver.findByIdAndUpdate(driverId, {
-              currentLocation: locationData,
-            });
-          }
-        } catch (err) {
-          console.error("Error handling driver:location socket event:", err);
-        }
-      }
-    );
 
     // 3. Driver or Admin updates trip status
     socket.on("trip:status_change", async ({ tripId, status }) => {
