@@ -6,24 +6,42 @@ const money = (p) =>
 const date = (v) =>
   v ? new Date(v).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "N/A";
 
+const isPurchase = (i) => Boolean(i.billNumber && !i.invoiceNumber);
+
 const VARIABLES = {
-  customerName: (i) => i.customerName || "Customer",
-  invoiceNumber: (i) => i.invoiceNumber,
-  invoiceDate: (i) => date(i.invoiceDate),
+  customerName: (i) => i.customerName || i.supplierName || i.vendorName || "Customer",
+  invoiceNumber: (i) => i.invoiceNumber || i.billNumber,
+  invoiceDate: (i) => date(i.invoiceDate || i.billDate || i.createdAt),
   dueDate: (i) => date(i.dueDate),
-  totalAmount: (i) => money(i.totalAmountPaise),
-  pendingAmount: (i) => money(i.outstandingAmountPaise),
+  totalAmount: (i) =>
+    money(
+      i.totalAmountPaise !== undefined
+        ? i.totalAmountPaise
+        : i.totalAmount
+        ? Math.round(Number(i.totalAmount) * 100)
+        : 0
+    ),
+  pendingAmount: (i) =>
+    money(
+      i.outstandingAmountPaise !== undefined
+        ? i.outstandingAmountPaise
+        : i.balanceAmount
+        ? Math.round(Number(i.balanceAmount) * 100)
+        : 0
+    ),
   companyName: () => process.env.COMPANY_NAME || "Company",
   viewUrl: (i) => {
     try {
+      const docType = isPurchase(i) ? "purchaseBill" : "invoice";
+      const ref = isPurchase(i) ? i.billNumber : i.invoiceNumber;
       const token = createDocToken({
         tenantId: i.tenantId,
-        docType: "invoice",
-        ref: i.invoiceNumber,
+        docType,
+        ref,
         ttlMinutes: 90 * 24 * 60,
       });
       const frontendBase = (process.env.FRONTEND_URL || "https://truebill.trustiqtech.com").replace(/\/$/, "");
-      return `${frontendBase}/print/invoice/${encodeURIComponent(token)}`;
+      return `${frontendBase}/print/${docType}/${encodeURIComponent(token)}`;
     } catch {
       return "";
     }

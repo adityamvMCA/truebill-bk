@@ -4,36 +4,67 @@ const crypto = require("crypto");
 const Driver = require("./driver.model");
 const Trip = require("./trip.model");
 
-// Geocoding helper using OpenStreetMap Nominatim with progressive fallback
+// Geocoding helper using Photon & OpenStreetMap Nominatim with progressive address parsing
 async function geocodeAddress(address) {
   if (!address || typeof address !== "string") return null;
-  const clean = address.trim();
+
+  const clean = address
+    .replace(/\bOR\b/gi, " ")
+    .replace(/[#@*()]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const pinMatch = address.match(/\b([1-9][0-9]{5})\b/);
+  const pin = pinMatch ? pinMatch[1] : "";
+
   const parts = clean.split(",").map((p) => p.trim()).filter(Boolean);
   const candidates = [
     clean,
     parts.slice(-3).join(", "),
     parts.slice(-2).join(", "),
+    pin && parts.length > 1 ? `${parts[parts.length - 2]} ${pin}` : null,
     parts.slice(-1)[0],
-  ];
+  ].filter(Boolean);
 
+  // 1. Try Photon first (fast, reliable, handles Indian addresses without blocking)
+  for (const q of candidates) {
+    if (!q || q.length < 3) continue;
+    try {
+      const url = `https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=1`;
+      const res = await fetch(url, { signal: AbortSignal.timeout(4000) });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.features && data.features.length > 0 && data.features[0].geometry?.coordinates) {
+          const [lon, lat] = data.features[0].geometry.coordinates;
+          if (lat && lon) {
+            return { lat: Number(lat), lng: Number(lon) };
+          }
+        }
+      }
+    } catch (err) {}
+  }
+
+  // 2. Fallback to Nominatim
   for (const q of candidates) {
     if (!q || q.length < 3) continue;
     try {
       const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=1`;
       const res = await fetch(url, {
-        headers: { "User-Agent": "TrustIQ-ERP/1.0" },
+        headers: { "User-Agent": "Mozilla/5.0 TrustIQ-ERP/2.0 (support@truebill.in)" },
+        signal: AbortSignal.timeout(4000),
       });
-      const data = await res.json();
-      if (Array.isArray(data) && data[0]?.lat && data[0]?.lon) {
-        return {
-          lat: parseFloat(data[0].lat),
-          lng: parseFloat(data[0].lon),
-        };
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data) && data[0]?.lat && data[0]?.lon) {
+          return {
+            lat: parseFloat(data[0].lat),
+            lng: parseFloat(data[0].lon),
+          };
+        }
       }
-    } catch (err) {
-      // Continue to next fallback query
-    }
+    } catch (err) {}
   }
+
   return null;
 }
 
@@ -125,6 +156,16 @@ exports.getDriverActiveTrip = async (req, res) => {
       status: { $in: ["STARTED", "SCHEDULED", "PAUSED"] },
       isDeleted: false,
     }).sort({ createdAt: -1 });
+
+    // Auto-resolve destination coordinates if missing
+    if (trip && (!trip.destination?.lat || !trip.destination?.lng) && trip.destination?.address) {
+      const geo = await geocodeAddress(trip.destination.address);
+      if (geo) {
+        trip.destination.lat = geo.lat;
+        trip.destination.lng = geo.lng;
+        await trip.save().catch(() => {});
+      }
+    }
 
     res.json({
       success: true,
@@ -334,6 +375,30 @@ exports.driverCompleteTrip = async (req, res) => {
     };
 
     await trip.save();
+
+    // Auto-update linked DeliveryNote to DELIVERED
+    if (trip.deliveryNoteId || trip.deliveryNoteNumber) {
+      try {
+        const DeliveryNote = require("../delivery-notes/deliveryNote.model");
+        const query = trip.deliveryNoteId
+          ? { _id: trip.deliveryNoteId }
+          : { deliveryNoteNumber: trip.deliveryNoteNumber, tenantId: trip.tenantId };
+
+        await DeliveryNote.findOneAndUpdate(
+          query,
+          {
+            $set: {
+              status: "DELIVERED",
+              deliveredAt: new Date(),
+              receivedByName: signedBy || trip.customerName || "Customer",
+              deliveryRemarks: notes || "Delivered via Driver Portal GPS",
+            },
+          }
+        );
+      } catch (dnErr) {
+        console.error("Failed to auto-update Delivery Note status to DELIVERED:", dnErr?.message);
+      }
+    }
 
     await Driver.findByIdAndUpdate(driverId, {
       status: "AVAILABLE",
@@ -611,6 +676,31 @@ exports.createTrip = async (req, res) => {
 
     driver.assignedTripId = trip._id;
     await driver.save();
+
+    // If linked to a Delivery Note, auto-update status to DISPATCHED
+    if (deliveryNoteId || deliveryNoteNumber) {
+      try {
+        const DeliveryNote = require("../delivery-notes/deliveryNote.model");
+        const query = deliveryNoteId
+          ? { _id: deliveryNoteId, tenantId }
+          : { deliveryNoteNumber, tenantId };
+
+        await DeliveryNote.findOneAndUpdate(
+          query,
+          {
+            $set: {
+              status: "DISPATCHED",
+              dispatchedAt: new Date(),
+              vehicleNumber: driver.vehicleNumber || undefined,
+              transporterName: driver.name || undefined,
+              dispatchRemarks: `Dispatched with Driver ${driver.name} (${driver.phone}) via Fleet Command`,
+            },
+          }
+        );
+      } catch (dnErr) {
+        console.error("Failed to auto-update Delivery Note status to DISPATCHED:", dnErr?.message);
+      }
+    }
 
     res.status(201).json({
       success: true,

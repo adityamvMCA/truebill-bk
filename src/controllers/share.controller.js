@@ -102,6 +102,17 @@ const getSalesInvoiceModel = (req) => {
   return models.SalesInvoice;
 };
 
+const getPurchaseBillModel = (req) => {
+  if (!req.tenant) return null;
+  try {
+    const connection = getReadyTenantConnection(req.tenant);
+    const models = getTenantAccountingModels(connection);
+    return models?.PurchaseBill || null;
+  } catch {
+    return null;
+  }
+};
+
 const getUserId = (req) => {
   const userId = req.user?.userId || req.user?._id || req.user?.id;
 
@@ -166,6 +177,7 @@ const normalizeInvoiceNumber = (value) =>
  */
 const findInvoiceForShare = async ({
   SalesInvoice,
+  PurchaseBill,
   tenantId,
   invoiceId,
   invoiceNumber,
@@ -189,10 +201,21 @@ const findInvoiceForShare = async ({
       isDeleted: { $ne: true },
     }).lean();
 
+    if (!invoice && PurchaseBill) {
+      invoice = await PurchaseBill.findOne({
+        _id: toObjectId(invoiceId),
+        tenantId,
+        isDeleted: { $ne: true },
+      }).lean();
+      if (invoice) {
+        invoice.isPurchaseBill = true;
+      }
+    }
+
     if (
       invoice &&
       number &&
-      normalizeInvoiceNumber(invoice.invoiceNumber) !== number
+      normalizeInvoiceNumber(invoice.invoiceNumber || invoice.billNumber) !== number
     ) {
       throw fail(400, "Invoice ID and invoice number do not match");
     }
@@ -204,6 +227,21 @@ const findInvoiceForShare = async ({
       invoiceNumber: number,
       isDeleted: { $ne: true },
     }).lean();
+
+    if (!invoice && PurchaseBill) {
+      invoice = await PurchaseBill.findOne({
+        tenantId,
+        $or: [
+          { billNumber: number },
+          { billNumber: number.toUpperCase() },
+          { supplierInvoiceNumber: number },
+        ],
+        isDeleted: { $ne: true },
+      }).lean();
+      if (invoice) {
+        invoice.isPurchaseBill = true;
+      }
+    }
   }
 
   if (!invoice) {
@@ -214,6 +252,21 @@ const findInvoiceForShare = async ({
     });
 
     throw fail(404, "Invoice not found for the selected tenant.");
+  }
+
+  // Normalize purchase bill fields to match invoice interface expected by WhatsApp/Email templates
+  if (invoice.isPurchaseBill) {
+    invoice.invoiceNumber = invoice.billNumber;
+    invoice.customerName = invoice.supplierName || invoice.vendorName || "Supplier";
+    invoice.customerPhone = invoice.contactPhone || invoice.supplierPhone || invoice.phone;
+    invoice.customerEmail = invoice.supplierEmail || invoice.email;
+    invoice.invoiceDate = invoice.billDate || invoice.createdAt;
+    if (invoice.totalAmountPaise === undefined && invoice.totalAmount) {
+      invoice.totalAmountPaise = Math.round(Number(invoice.totalAmount) * 100);
+    }
+    if (invoice.outstandingAmountPaise === undefined && invoice.balanceAmount !== undefined) {
+      invoice.outstandingAmountPaise = Math.round(Number(invoice.balanceAmount) * 100);
+    }
   }
 
   return invoice;
@@ -268,6 +321,7 @@ exports.send = wrap(async (req, res) => {
 
   const invoice = await findInvoiceForShare({
     SalesInvoice,
+    PurchaseBill: getPurchaseBillModel(req),
     tenantId,
     invoiceId,
     invoiceNumber,
@@ -981,6 +1035,7 @@ exports.previewTemplate = wrap(async (req, res) => {
   if (invoiceId || invoiceNumber) {
     invoice = await findInvoiceForShare({
       SalesInvoice: getSalesInvoiceModel(req),
+      PurchaseBill: getPurchaseBillModel(req),
       tenantId,
       invoiceId,
       invoiceNumber,
