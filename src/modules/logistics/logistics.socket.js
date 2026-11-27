@@ -69,16 +69,17 @@ module.exports = function registerLogisticsSocket(io) {
           updatedAt: now,
         };
 
-        // Broadcast to anyone listening to this trip immediately for zero latency (< 50ms)
+        // Instant broadcast (<10ms) to trip room so listening clients see second-to-second movement
         if (tripId) {
           ns.to(`trip_${tripId}`).emit("trip:location_update", {
             tripId,
+            driverId,
             location: locationData,
           });
         }
 
         // Broadcast to fleet admin dashboard
-        const effectiveTenantId = tenantId || socket.data?.tenantId;
+        let effectiveTenantId = tenantId || socket.data?.tenantId;
         if (effectiveTenantId) {
           ns.to(`tenant_${effectiveTenantId}`).emit("fleet:driver_update", {
             driverId,
@@ -87,10 +88,15 @@ module.exports = function registerLogisticsSocket(io) {
           });
         }
 
-        // Asynchronously persist to database
+        // Asynchronously persist to database and calculate remaining distance & ETA
         if (tripId) {
           const trip = await Trip.findById(tripId);
           if (trip) {
+            if (!effectiveTenantId && trip.tenantId) {
+              effectiveTenantId = String(trip.tenantId);
+              socket.data.tenantId = effectiveTenantId;
+            }
+
             // Calculate incremental distance if there was a previous point
             let extraKm = 0;
             if (trip.currentLocation?.lat && trip.currentLocation?.lng) {
@@ -109,6 +115,22 @@ module.exports = function registerLogisticsSocket(io) {
               ((trip.distanceCoveredKm || 0) + extraKm).toFixed(2)
             );
 
+            // Calculate remaining distance and ETA to destination
+            let remainingKm = 0;
+            let etaMinutes = 0;
+            if (trip.destination?.lat && trip.destination?.lng) {
+              remainingKm = Number(
+                haversineDistance(
+                  locationData.lat,
+                  locationData.lng,
+                  trip.destination.lat,
+                  trip.destination.lng
+                ).toFixed(2)
+              );
+              const estSpeed = locationData.speed > 5 ? locationData.speed : 30; // fallback 30km/h
+              etaMinutes = remainingKm > 0 ? Math.max(1, Math.round((remainingKm / estSpeed) * 60)) : 0;
+            }
+
             // Append breadcrumb
             trip.path.push({
               lat: locationData.lat,
@@ -125,26 +147,24 @@ module.exports = function registerLogisticsSocket(io) {
 
             await trip.save();
 
-            // Also notify via token room for public receivers
+            const broadcastPayload = {
+              driverId,
+              tripId,
+              location: locationData,
+              distanceCoveredKm: trip.distanceCoveredKm,
+              remainingKm,
+              etaMinutes,
+            };
+
+            // Broadcast enriched telemetry with ETA and remaining distance
+            ns.to(`trip_${tripId}`).emit("trip:location_update", broadcastPayload);
+
             if (trip.trackingToken) {
-              ns.to(`token_${trip.trackingToken}`).emit(
-                "trip:location_update",
-                {
-                  tripId,
-                  location: locationData,
-                  distanceCoveredKm: trip.distanceCoveredKm,
-                }
-              );
+              ns.to(`token_${trip.trackingToken}`).emit("trip:location_update", broadcastPayload);
             }
 
-            // Also ensure tenant fleet map is updated
-            if (trip.tenantId && String(trip.tenantId) !== String(effectiveTenantId)) {
-              ns.to(`tenant_${trip.tenantId}`).emit("fleet:driver_update", {
-                driverId,
-                tripId,
-                location: locationData,
-                distanceCoveredKm: trip.distanceCoveredKm,
-              });
+            if (effectiveTenantId) {
+              ns.to(`tenant_${effectiveTenantId}`).emit("fleet:driver_update", broadcastPayload);
             }
           }
         }
