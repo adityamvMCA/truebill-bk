@@ -2,6 +2,7 @@ const crypto = require("crypto");
 const MessageLog = require("../models/MessageLog");
 const MessageTemplate = require("../models/MessageTemplate");
 const MessagingSettings = require("../models/MessagingSettings");
+const { handleIncomingWhatsAppMessage } = require("../services/aiWhatsAppProcessor.service");
 
 /* Meta calls this once when you register the webhook URL */
 exports.verify = (req, res) => {
@@ -16,6 +17,8 @@ exports.verify = (req, res) => {
 
 const validSignature = (req) => {
   const signature = req.get("x-hub-signature-256") || "";
+  if (!process.env.META_APP_SECRET) return true; // fallback if secret not set
+
   const expected =
     "sha256=" +
     crypto.createHmac("sha256", process.env.META_APP_SECRET).update(req.body).digest("hex");
@@ -41,7 +44,21 @@ exports.receive = async (req, res) => {
       for (const change of entry.changes || []) {
         const value = change.value || {};
 
-        /* Message status + pricing */
+        /* 1. Handle incoming customer messages -> Pass to AI Bot */
+        for (const msg of value.messages || []) {
+          if (msg.type === "text") {
+            const senderPhone = msg.from;
+            const userText = msg.text?.body;
+            console.log(`[Meta Webhook] Received incoming text from ${senderPhone}: "${userText}"`);
+
+            handleIncomingWhatsAppMessage({
+              phone: senderPhone,
+              message: userText,
+            }).catch((e) => console.error("[Meta Webhook] AI processor error:", e));
+          }
+        }
+
+        /* 2. Message status + pricing */
         for (const s of value.statuses || []) {
           const log = await MessageLog.findOne({ providerMessageId: s.id });
           if (!log) continue;
@@ -71,7 +88,7 @@ exports.receive = async (req, res) => {
           await log.save();
         }
 
-        /* Template approval updates */
+        /* 3. Template approval updates */
         if (change.field === "message_template_status_update") {
           const status = String(value.event || "").toUpperCase();
           await MessageTemplate.updateMany(
