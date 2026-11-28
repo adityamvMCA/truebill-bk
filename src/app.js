@@ -276,6 +276,7 @@ app.post(
   webhook.receive,
 );
 app.use("/api/share", require("./routes/share.routes"));
+app.use("/api/ai", require("./routes/aiCashflow.routes"));
 app.use("/api/hr", hrRoutes);
 app.use("/api/logistics", logisticsRoutes);
 app.use(express.json({ limit: "5mb" }));
