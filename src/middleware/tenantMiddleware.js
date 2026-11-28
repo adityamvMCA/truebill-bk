@@ -11,45 +11,51 @@ const resolveTenant = async (req, res, next) => {
     const headerTenantId =
       req.headers["x-tenant-id"] || req.headers["x-selected-tenant-id"];
 
-    let tenantId = isPlatform ? headerTenantId : (headerTenantId || req.user.tenantId);
+    let tenant = null;
 
-    if (!tenantId || !mongoose.isValidObjectId(tenantId))
-      return res
-        .status(400)
-        .json({ success: false, message: "Invalid or missing tenant" });
+    if (isPlatform) {
+      const tenantId = headerTenantId;
+      if (!tenantId || !mongoose.isValidObjectId(tenantId)) {
+        return res
+          .status(400)
+          .json({ success: false, message: "Invalid or missing tenant" });
+      }
+      tenant = await Tenant.findOne({ _id: tenantId, isActive: true });
+    } else {
+      // For tenant users:
+      // If a headerTenantId was provided (e.g. multi-company switch), check if valid & authorized
+      if (headerTenantId && mongoose.isValidObjectId(headerTenantId)) {
+        const candidate = await Tenant.findOne({ _id: headerTenantId, isActive: true });
+        if (candidate) {
+          const userId = req.user.userId || req.user._id || req.user.id;
+          const isOwner = String(candidate.createdBy) === String(userId);
+          const dbUser = await User.findById(userId).select("tenants role primaryTenantId").lean();
+          const isMember = Array.isArray(dbUser?.tenants) && dbUser.tenants.some((t) => String(t.tenantId) === String(headerTenantId));
+          const isParentAdmin = dbUser?.role === "admin" && candidate.parentTenantId && String(candidate.parentTenantId) === String(dbUser?.primaryTenantId);
 
-    const tenant = await Tenant.findOne({ _id: tenantId, isActive: true });
-    if (!tenant)
+          if (isOwner || isMember || isParentAdmin || String(headerTenantId) === String(req.user.tenantId)) {
+            tenant = candidate;
+          }
+        }
+      }
+
+      // If header was not provided, invalid, unauthorized, or stale from a previous user/developer session,
+      // safely fall back to the user's authentic assigned tenantId!
+      if (!tenant && req.user.tenantId && mongoose.isValidObjectId(req.user.tenantId)) {
+        tenant = await Tenant.findOne({ _id: req.user.tenantId, isActive: true });
+      }
+    }
+
+    if (!tenant) {
       return res
         .status(404)
         .json({ success: false, message: "Tenant not found or inactive" });
+    }
 
-    if (["suspended", "cancelled"].includes(tenant.status))
+    if (["suspended", "cancelled"].includes(tenant.status)) {
       return res
         .status(403)
         .json({ success: false, message: `Tenant is ${tenant.status}` });
-
-    // If tenant user requested a different tenant via header, verify authorization
-    if (!isPlatform && headerTenantId && String(headerTenantId) !== String(req.user.tenantId)) {
-      const userId = req.user.userId || req.user._id || req.user.id;
-      const isOwner = String(tenant.createdBy) === String(userId);
-      let isMember = false;
-      const dbUser = await User.findById(userId).select("tenants role primaryTenantId").lean();
-
-      const isParentAdmin =
-        dbUser?.role === "admin" &&
-        tenant.parentTenantId &&
-        String(tenant.parentTenantId) === String(dbUser?.primaryTenantId);
-
-      if (Array.isArray(dbUser?.tenants)) {
-        isMember = dbUser.tenants.some((t) => String(t.tenantId) === String(headerTenantId));
-      }
-
-      if (!isOwner && !isMember && !isParentAdmin) {
-        return res
-          .status(403)
-          .json({ success: false, message: "Unauthorized access to this business" });
-      }
     }
 
     req.tenant = tenant;
@@ -59,4 +65,5 @@ const resolveTenant = async (req, res, next) => {
     next(e);
   }
 };
+
 module.exports = resolveTenant;

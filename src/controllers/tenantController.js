@@ -870,7 +870,16 @@ const createTenant = async (req, res) => {
               platformRole: "tenant",
               role: "admin",
               tenantId,
+              primaryTenantId: tenantId,
               clientCode,
+              tenants: [
+                {
+                  tenantId,
+                  role: "admin",
+                  isDefault: true,
+                  joinedAt: new Date(),
+                },
+              ],
               permissions:
                 getRolePermissions("admin"),
 
