@@ -2,6 +2,7 @@ const mongoose = require("mongoose");
 const CustomerReceipt = require("../modules/customer-receipts/customerReceipt.model");
 const SupplierPayment = require("../modules/supplier-payments/supplierPayment.model");
 const Expense = require("../modules/accounting/Expenses/expense.model");
+const SalesInvoice = require("../modules/sales-invoices/salesInvoice.model");
 const Tenant = require("../models/Tenant");
 
 /**
@@ -41,7 +42,7 @@ async function resolveTenantId(tenantId) {
 }
 
 /**
- * Calculates cashflow for a given day
+ * Calculates complete cashflow and daily sales for a tenant
  */
 async function calculateCashflow({ tenantId, date } = {}) {
   const { startOfDay, endOfDay, dateString } = getDayRange(date);
@@ -122,10 +123,29 @@ async function calculateCashflow({ tenantId, date } = {}) {
     console.error("AI Cashflow: Expense query error:", err.message);
   }
 
+  // 4. Sales Invoices today
+  let salesTotalPaise = 0;
+  let salesCount = 0;
+  try {
+    const invoices = await SalesInvoice.find({
+      ...baseFilter,
+      invoiceDate: { $gte: startOfDay, $lte: endOfDay },
+      status: { $ne: "cancelled" },
+    }).lean();
+
+    salesCount = invoices.length;
+    for (const inv of invoices) {
+      salesTotalPaise += Number(inv.totalAmountPaise || 0);
+    }
+  } catch (err) {
+    console.error("AI Cashflow: SalesInvoice query error:", err.message);
+  }
+
   // Convert Paise to INR Rupees
-  const totalInflowRupees = (receiptTotalPaise / 100);
-  const totalOutflowRupees = ((paymentTotalPaise + expenseTotalPaise) / 100);
+  const totalInflowRupees = receiptTotalPaise / 100;
+  const totalOutflowRupees = (paymentTotalPaise + expenseTotalPaise) / 100;
   const netCashflowRupees = totalInflowRupees - totalOutflowRupees;
+  const totalSalesRupees = salesTotalPaise / 100;
 
   const cashInflowRupees = receiptCashPaise / 100;
   const bankInflowRupees = receiptBankPaise / 100;
@@ -151,6 +171,8 @@ async function calculateCashflow({ tenantId, date } = {}) {
     ``,
     `${statusEmoji} *Net Cash Flow:* ₹${netCashflowRupees.toLocaleString("en-IN")}`,
     `Status: *${trend}*`,
+    ``,
+    `🧾 *Today's Total Sales:* ₹${totalSalesRupees.toLocaleString("en-IN")} (${salesCount} invoices)`,
   ].join("\n");
 
   return {
@@ -169,6 +191,10 @@ async function calculateCashflow({ tenantId, date } = {}) {
       expenseCount,
     },
     netCashflow: netCashflowRupees,
+    sales: {
+      total: totalSalesRupees,
+      invoiceCount: salesCount,
+    },
     status: trend,
     whatsappMessage,
   };

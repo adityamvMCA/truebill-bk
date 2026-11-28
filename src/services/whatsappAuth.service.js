@@ -3,7 +3,7 @@ const User = require("../models/User");
 const Tenant = require("../models/Tenant");
 const WhatsAppSession = require("../models/WhatsAppSession");
 
-const SESSION_DURATION_HOURS = 24;
+const SESSION_DURATION_HOURS = 24 * 30; // 30 days for mobile-identified users
 
 /**
  * Normalizes phone numbers to digits only
@@ -17,22 +17,96 @@ function cleanPhone(rawPhone) {
 }
 
 /**
- * Retrieves an active session for this phone number
+ * Automatically identifies a Tenant and User directly from their mobile number!
  */
-async function getSession(rawPhone) {
-  const phone = cleanPhone(rawPhone);
-  if (!phone) return null;
+async function identifyTenantByPhone(rawPhone) {
+  const digits = cleanPhone(rawPhone);
+  if (!digits) return null;
 
+  const last10 = digits.slice(-10);
+  const possiblePhoneFormats = [
+    digits,
+    last10,
+    `+91${last10}`,
+    `91${last10}`,
+    `+91 ${last10}`,
+    `0${last10}`,
+  ];
+
+  // 1. Search in User collection
+  let user = await User.findOne({
+    phone: { $in: possiblePhoneFormats },
+  }).lean();
+
+  if (!user && last10.length === 10) {
+    user = await User.findOne({
+      phone: new RegExp(`${last10}$`),
+    }).lean();
+  }
+
+  if (user) {
+    const tenantId = user.tenantId || user.primaryTenantId;
+    let tenantName = "Business";
+    if (tenantId) {
+      const tenant = await Tenant.findById(tenantId).lean();
+      if (tenant) tenantName = tenant.businessName;
+    }
+
+    return {
+      authenticated: true,
+      byPhone: true,
+      userId: user._id,
+      userName: user.name || user.username || "User",
+      tenantId,
+      tenantName,
+      phone: digits,
+    };
+  }
+
+  // 2. Search in Tenant collection directly (if business owner phone is in Tenant)
+  const tenant = await Tenant.findOne({
+    $or: [
+      { phone: { $in: possiblePhoneFormats } },
+      { contactPhone: { $in: possiblePhoneFormats } },
+    ],
+    isActive: true,
+  }).lean();
+
+  if (tenant) {
+    return {
+      authenticated: true,
+      byPhone: true,
+      userId: null,
+      userName: tenant.contactPerson || tenant.businessName,
+      tenantId: tenant._id,
+      tenantName: tenant.businessName,
+      phone: digits,
+    };
+  }
+
+  // 3. Fallback: Check if there's an active session previously created via password
   const session = await WhatsAppSession.findOne({
-    phone,
+    phone: digits,
     expiresAt: { $gt: new Date() },
   }).lean();
 
-  return session;
+  if (session) {
+    return {
+      authenticated: true,
+      byPhone: false,
+      userId: session.userId,
+      userName: session.userName,
+      tenantId: session.tenantId,
+      tenantName: session.tenantName,
+      phone: digits,
+    };
+  }
+
+  return null;
 }
 
 /**
- * Authenticates user credentials and creates a WhatsApp session
+ * Manual login fallback if phone number is not yet in the DB
  */
 async function authenticate(rawPhone, identifier, password) {
   const phone = cleanPhone(rawPhone);
@@ -79,7 +153,6 @@ async function authenticate(rawPhone, identifier, password) {
     };
   }
 
-  // Determine tenant
   const tenantId = user.tenantId || user.primaryTenantId;
   if (!tenantId) {
     return {
@@ -91,7 +164,11 @@ async function authenticate(rawPhone, identifier, password) {
   const tenant = await Tenant.findById(tenantId).lean();
   const tenantName = tenant ? tenant.businessName : "Business";
 
-  // Create or update session (valid for 24h)
+  // Auto-save this phone to the user so future messages don't need login!
+  if (!user.phone && phone.length >= 10) {
+    await User.findByIdAndUpdate(user._id, { phone: phone.slice(-10) });
+  }
+
   const expiresAt = new Date(Date.now() + SESSION_DURATION_HOURS * 60 * 60 * 1000);
 
   await WhatsAppSession.findOneAndUpdate(
@@ -110,22 +187,19 @@ async function authenticate(rawPhone, identifier, password) {
   return {
     success: true,
     user: { name: user.name, tenantName },
-    message: `✅ *Authentication Successful!*\n\nWelcome *${user.name}* (${tenantName}).\n\nYour session is active for 24 hours. You can now ask:\n• *"Today total cashflow"*\n• *"Today collections"*\n• Or any business question.`,
+    message: `✅ *Authentication Successful!*\n\nWelcome *${user.name}* (*${tenantName}*).\n\nYour mobile number is now connected. You can ask:\n• *"Today total cashflow"*\n• *"Today sales"*\n• Or any question directly!`,
   };
 }
 
-/**
- * Removes session on logout
- */
 async function logout(rawPhone) {
   const phone = cleanPhone(rawPhone);
   if (!phone) return;
   await WhatsAppSession.deleteOne({ phone });
-  return "🔒 You have been logged out successfully.";
+  return "🔒 You have been logged out.";
 }
 
 module.exports = {
-  getSession,
+  identifyTenantByPhone,
   authenticate,
   logout,
   cleanPhone,
