@@ -178,14 +178,7 @@ const getMenuByRole = async (req, res) => {
       }
 
       ent = await getEntitlements(req.user.tenantId);
-
-      if (!ent.valid) {
-        return res.status(402).json({
-          success: false,
-          code: ent.reason,
-          message: "Subscription is inactive or expired",
-        });
-      }
+      // Expired tenants remain entitled to view menus in read-only mode
     }
 
     const featureSet =

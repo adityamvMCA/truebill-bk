@@ -327,15 +327,6 @@ const me = async (req, res) => {
 
       if (tenant) {
         const entitlements = await getEntitlements(tenant);
-
-        if (!entitlements.valid) {
-          return res.status(402).json({
-            success: false,
-            code: entitlements.reason,
-            message: "Subscription is inactive or expired",
-          });
-        }
-
         subscription = serializeEntitlements(entitlements);
       }
     }

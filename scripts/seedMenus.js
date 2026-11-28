@@ -18,6 +18,7 @@ const ROLES = {
   PURCHASE: ["admin", "manager", "purchase"],
   INVENTORY: ["admin", "manager", "inventory"],
   PURCHASE_PARENT: ["admin", "manager", "purchase", "inventory"],
+  PURCHASE_RECEIVING: ["admin", "manager", "purchase", "inventory"],
   ALL: ["admin", "manager", "sales", "purchase", "inventory", "viewer"],
 };
 
@@ -583,7 +584,7 @@ const menus = [
 
   {
     group: "Reports",
-    groupOrder: 13,
+    groupOrder: 10,
     label: "Reports",
     icon: "BarChart3",
     path: "/reports",
@@ -615,28 +616,28 @@ const menus = [
         "reports.accounting",
         ROLES.MANAGEMENT,
       ),
-        child(
-      "reports-ledger-insights",
-      "Ledger Insights",
-      "ChartNoAxesCombined",
-      "/accounting/ledger-insights",
-      "reports.accounting",
-      ROLES.MANAGEMENT,
-    ),
-    child(
-      "reports-ledger-statement",
-      "Ledger Statement",
-      "BookOpen",
-      "/accounting/ledger/:ledgerCode",
-      "reports.accounting",
-      ROLES.MANAGEMENT,
-    ),
+      child(
+        "reports-ledger-insights",
+        "Ledger Insights",
+        "ChartNoAxesCombined",
+        "/accounting/ledger-insights",
+        "reports.accounting",
+        ROLES.MANAGEMENT,
+      ),
+      child(
+        "reports-ledger-statement",
+        "Ledger Statement",
+        "BookOpen",
+        "/accounting/ledger-statement",
+        "reports.accounting",
+        ROLES.MANAGEMENT,
+      ),
     ],
   },
 
   {
     group: "Settings",
-    groupOrder: 14,
+    groupOrder: 11,
     label: "Settings",
     icon: "Settings",
     path: "/settings",
@@ -692,11 +693,19 @@ const menus = [
         "settings.appearance",
         ROLES.ADMIN,
       ),
-       child(
+      child(
         "settings-print",
         "Print Templates",
-        "printer",
+        "Printer",
         "/settings/print-templates",
+        "settings.appearance",
+        ROLES.ADMIN,
+      ),
+      child(
+        "settings-messaging",
+        "Messaging Settings",
+        "MessageSquare",
+        "/settings/messaging",
         "settings.appearance",
         ROLES.ADMIN,
       ),
