@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 const { calculateCashflow } = require("../services/aiCashflow.service");
 const { getSession, authenticate, logout } = require("../services/whatsappAuth.service");
+const { callGraph, normalizePhone } = require("../services/whatsapp.service");
 
 // LLM settings from environment or fallback to FreeLLMAPI
 const LLM_BASE_URL = process.env.LLM_BASE_URL || "https://llm.trustiqtech.com/v1";
@@ -9,13 +10,50 @@ const LLM_API_KEY = process.env.LLM_API_KEY || "";
 const LLM_MODEL = process.env.LLM_MODEL || "auto";
 
 /**
- * Extracts phone and message from various possible WACRM webhook payloads
+ * Sends a WhatsApp text message directly via Meta Graph API
+ */
+async function sendWhatsAppDirect(recipientPhone, text) {
+  if (!recipientPhone || !text) return;
+  try {
+    const to = normalizePhone(recipientPhone);
+    const phoneId = process.env.PHONE_NUMBER_ID;
+    if (!phoneId) {
+      console.warn("sendWhatsAppDirect: No PHONE_NUMBER_ID configured in .env");
+      return;
+    }
+
+    const res = await callGraph(`${phoneId}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        messaging_product: "whatsapp",
+        recipient_type: "individual",
+        to,
+        type: "text",
+        text: { preview_url: false, body: text },
+      }),
+    });
+    console.log(`WhatsApp message sent to ${to}:`, res?.messages?.[0]?.id || "ok");
+    return res;
+  } catch (err) {
+    console.error(`WhatsApp send error to ${recipientPhone}:`, err.message, err.meta || "");
+  }
+}
+
+/**
+ * Extracts phone and message from various possible webhook formats
  */
 function extractPayload(req) {
   const b = req.body || {};
   const q = req.query || {};
 
+  // Check if standard Meta webhook payload
+  const metaMsg = b.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
+  const metaPhone = metaMsg?.from;
+  const metaText = metaMsg?.text?.body;
+
   const phone =
+    metaPhone ||
     b.phone ||
     b.contact?.phone ||
     b.from ||
@@ -26,6 +64,7 @@ function extractPayload(req) {
     "";
 
   const message =
+    metaText ||
     b.message ||
     b.text ||
     b.body ||
@@ -72,11 +111,13 @@ async function getCashflowHandler(req, res) {
 
 /**
  * Main Webhook Handler:
- * Authenticates user, checks tenant session, and responds based on query.
+ * Authenticates user, checks tenant session, processes query, and
+ * directly sends the WhatsApp response back to the customer's mobile!
  */
 async function processWhatsAppQuery(req, res) {
   try {
     const { phone, message } = extractPayload(req);
+    console.log(`[AI WhatsApp] Incoming request from ${phone || "unknown"}: "${message}"`);
 
     // If no message text was passed, treat as a direct cashflow request
     if (!message) {
@@ -85,15 +126,17 @@ async function processWhatsAppQuery(req, res) {
 
     const text = message.trim();
     const lower = text.toLowerCase();
+    let replyText = "";
 
     // 1. Check if user is trying to LOG OUT
     if (lower === "logout" || lower === "log out") {
-      const msg = await logout(phone);
-      return res.json({ success: true, reply: msg, message: msg, text: msg });
+      replyText = await logout(phone);
+      if (phone) await sendWhatsAppDirect(phone, replyText);
+      return res.json({ success: true, reply: replyText, message: replyText, text: replyText });
     }
 
     // 2. Check if user is submitting LOGIN credentials
-    // Format: "login: user password", "login user password"
+    // Formats: "login: user pass", "login user pass"
     const loginPrefixMatch = text.match(/^login[:\s]+(.+)/i);
     if (loginPrefixMatch) {
       const credsPart = loginPrefixMatch[1].trim();
@@ -102,11 +145,13 @@ async function processWhatsAppQuery(req, res) {
       const password = parts.slice(1).join(" ");
 
       const authResult = await authenticate(phone, identifier, password);
+      replyText = authResult.message;
+      if (phone) await sendWhatsAppDirect(phone, replyText);
       return res.json({
         success: authResult.success,
-        reply: authResult.message,
-        message: authResult.message,
-        text: authResult.message,
+        reply: replyText,
+        message: replyText,
+        text: replyText,
       });
     }
 
@@ -129,7 +174,7 @@ async function processWhatsAppQuery(req, res) {
       if (phone) {
         const session = await getSession(phone);
         if (!session) {
-          const authPrompt = [
+          replyText = [
             `🔒 *Authentication Required*`,
             ``,
             `To view live financial and cashflow data for your business, please login first.`,
@@ -141,12 +186,13 @@ async function processWhatsAppQuery(req, res) {
             `login: admin@trustiq.com myPassword123`,
           ].join("\n");
 
+          if (phone) await sendWhatsAppDirect(phone, replyText);
           return res.json({
             success: false,
             authenticated: false,
-            reply: authPrompt,
-            message: authPrompt,
-            text: authPrompt,
+            reply: replyText,
+            message: replyText,
+            text: replyText,
           });
         }
 
@@ -158,11 +204,12 @@ async function processWhatsAppQuery(req, res) {
     // 5. If it's a cashflow query and authenticated:
     if (isFinancialQuery) {
       const cashflowResult = await calculateCashflow({ tenantId });
-      let replyText = cashflowResult.whatsappMessage;
+      replyText = cashflowResult.whatsappMessage;
       if (tenantName) {
         replyText = `🏢 *${tenantName}*\n` + replyText;
       }
 
+      if (phone) await sendWhatsAppDirect(phone, replyText);
       return res.json({
         success: true,
         reply: replyText,
@@ -195,22 +242,22 @@ async function processWhatsAppQuery(req, res) {
     });
 
     if (!response.ok) {
-      return res.json({
-        success: true,
-        reply: "I received your message, but the AI gateway is temporarily unavailable. Please try again.",
-      });
+      replyText = "I received your message, but the AI gateway is temporarily unavailable. Please try again.";
+      if (phone) await sendWhatsAppDirect(phone, replyText);
+      return res.json({ success: true, reply: replyText });
     }
 
     const data = await response.json();
-    const aiReply =
+    replyText =
       data.choices?.[0]?.message?.content ||
       "Received your message, but no response was generated.";
 
+    if (phone) await sendWhatsAppDirect(phone, replyText);
     return res.json({
       success: true,
-      reply: aiReply,
-      message: aiReply,
-      text: aiReply,
+      reply: replyText,
+      message: replyText,
+      text: replyText,
     });
   } catch (error) {
     console.error("AI WhatsApp processor error:", error);
