@@ -4,6 +4,8 @@ const PurchaseBill = require("../modules/purchase-bills/purchaseBill.model");
 const Product = require("../modules/products/product.model");
 const Customer = require("../modules/customers/customer.model");
 const Supplier = require("../modules/suppliers/supplier.model");
+const SupplierPayment = require("../modules/supplier-payments/supplierPayment.model");
+const CustomerReceipt = require("../modules/customer-receipts/customerReceipt.model");
 const { calculateCashflow } = require("./aiCashflow.service");
 
 function escapeRegex(str) {
@@ -58,7 +60,6 @@ async function getCustomerOutstanding({ tenantId, customerName }) {
     };
   }
 
-  // If no customer specified, group by customer and show total receivables + top debtors
   const grouped = await SalesInvoice.aggregate([
     { $match: baseMatch },
     {
@@ -144,7 +145,6 @@ async function getSupplierOutstanding({ tenantId, supplierName }) {
     };
   }
 
-  // If no supplier specified, group by supplier and show top payables
   const grouped = await PurchaseBill.aggregate([
     { $match: baseMatch },
     {
@@ -250,10 +250,156 @@ async function getProductStock({ tenantId, productName }) {
   };
 }
 
+/**
+ * 5. Vendor / Customer Complete Information & Last Paid Amount
+ */
+async function getPartyDetails({ tenantId, name }) {
+  if (!name) return { found: false, summary: "Please specify a customer or vendor name." };
+
+  const tenantObjectId = new mongoose.Types.ObjectId(tenantId);
+  const regex = new RegExp(escapeRegex(name.trim()), "i");
+
+  // 1. Check Supplier (Vendor) first
+  const supplier = await Supplier.findOne({
+    tenantId: tenantObjectId,
+    supplierName: regex,
+  }).lean();
+
+  if (supplier) {
+    const lastPayment = await SupplierPayment.findOne({
+      tenantId: tenantObjectId,
+      $or: [{ supplierId: supplier._id }, { supplierName: regex }],
+    })
+      .sort({ paymentDate: -1, createdAt: -1 })
+      .lean();
+
+    const unpaidBills = await PurchaseBill.find({
+      tenantId: tenantObjectId,
+      $or: [{ supplierId: supplier._id }, { supplierName: regex }],
+      paymentStatus: { $nin: ["PAID", "SETTLED"] },
+      status: { $ne: "cancelled" },
+    }).lean();
+
+    let totalDuePaise = 0;
+    for (const b of unpaidBills) {
+      totalDuePaise += Number(b.totalAmountPaise || 0) - Number(b.paidAmountPaise || 0);
+    }
+
+    const lastPaidRupees = lastPayment ? Number(lastPayment.amountPaise || 0) / 100 : 0;
+    const lastPaidDate = lastPayment?.paymentDate
+      ? new Date(lastPayment.paymentDate).toISOString().slice(0, 10)
+      : null;
+
+    const summaryLines = [
+      `🏭 *Vendor / Supplier Profile: ${supplier.supplierName}*`,
+      supplier.contactPerson ? `• *Contact:* ${supplier.contactPerson}` : null,
+      supplier.phone ? `• *Phone:* ${supplier.phone}` : null,
+      supplier.email ? `• *Email:* ${supplier.email}` : null,
+      supplier.gstNo ? `• *GSTIN:* ${supplier.gstNo}` : null,
+      supplier.city ? `• *Location:* ${supplier.city}${supplier.state ? ", " + supplier.state : ""}` : null,
+      ``,
+      `💰 *Total Amount We Owe:* ₹${(totalDuePaise / 100).toLocaleString("en-IN")}`,
+      lastPayment
+        ? `💸 *Last Paid Amount:* ₹${lastPaidRupees.toLocaleString("en-IN")} on ${lastPaidDate} (via ${lastPayment.paymentMethod || "Bank"})`
+        : `💸 *Last Paid Amount:* No previous payment recorded.`,
+      `📄 *Pending Bills:* ${unpaidBills.length}`,
+    ].filter(Boolean);
+
+    return {
+      found: true,
+      type: "SUPPLIER",
+      name: supplier.supplierName,
+      phone: supplier.phone,
+      gstNo: supplier.gstNo,
+      outstandingDue: totalDuePaise / 100,
+      lastPayment: lastPayment
+        ? {
+            amount: lastPaidRupees,
+            date: lastPaidDate,
+            method: lastPayment.paymentMethod,
+            number: lastPayment.paymentNumber,
+          }
+        : null,
+      summary: summaryLines.join("\n"),
+    };
+  }
+
+  // 2. Check Customer
+  const customer = await Customer.findOne({
+    tenantId: tenantObjectId,
+    customerName: regex,
+  }).lean();
+
+  if (customer) {
+    const lastReceipt = await CustomerReceipt.findOne({
+      tenantId: tenantObjectId,
+      $or: [{ customerId: customer._id }, { customerName: regex }],
+    })
+      .sort({ receiptDate: -1, createdAt: -1 })
+      .lean();
+
+    const unpaidInvoices = await SalesInvoice.find({
+      tenantId: tenantObjectId,
+      $or: [{ customerId: customer._id }, { customerName: regex }],
+      paymentStatus: { $ne: "PAID" },
+      status: { $ne: "cancelled" },
+    }).lean();
+
+    let totalDuePaise = 0;
+    for (const inv of unpaidInvoices) {
+      totalDuePaise += Number(inv.totalAmountPaise || 0) - Number(inv.paidAmountPaise || 0);
+    }
+
+    const lastReceivedRupees = lastReceipt ? Number(lastReceipt.amountPaise || 0) / 100 : 0;
+    const lastReceiptDate = lastReceipt?.receiptDate
+      ? new Date(lastReceipt.receiptDate).toISOString().slice(0, 10)
+      : null;
+
+    const summaryLines = [
+      `👤 *Customer Profile: ${customer.customerName}*`,
+      customer.contactPerson ? `• *Contact:* ${customer.contactPerson}` : null,
+      customer.phone ? `• *Phone:* ${customer.phone}` : null,
+      customer.email ? `• *Email:* ${customer.email}` : null,
+      customer.gstNo ? `• *GSTIN:* ${customer.gstNo}` : null,
+      customer.city ? `• *Location:* ${customer.city}${customer.state ? ", " + customer.state : ""}` : null,
+      ``,
+      `💰 *Total Outstanding Balance:* ₹${(totalDuePaise / 100).toLocaleString("en-IN")}`,
+      lastReceipt
+        ? `📥 *Last Paid by Customer:* ₹${lastReceivedRupees.toLocaleString("en-IN")} on ${lastReceiptDate} (via ${lastReceipt.receiptMethod || "Bank"})`
+        : `📥 *Last Paid by Customer:* No previous receipt recorded.`,
+      `📄 *Unpaid Invoices:* ${unpaidInvoices.length}`,
+    ].filter(Boolean);
+
+    return {
+      found: true,
+      type: "CUSTOMER",
+      name: customer.customerName,
+      phone: customer.phone,
+      gstNo: customer.gstNo,
+      outstandingDue: totalDuePaise / 100,
+      lastPayment: lastReceipt
+        ? {
+            amount: lastReceivedRupees,
+            date: lastReceiptDate,
+            method: lastReceipt.receiptMethod,
+            number: lastReceipt.receiptNumber,
+          }
+        : null,
+      summary: summaryLines.join("\n"),
+    };
+  }
+
+  return {
+    found: false,
+    summary: `No vendor or customer found matching "${name}".`,
+  };
+}
+
 module.exports = {
   getCustomerOutstanding,
   getSupplierOutstanding,
   getLowStockItems,
   getProductStock,
+  getPartyDetails,
   calculateCashflow,
 };

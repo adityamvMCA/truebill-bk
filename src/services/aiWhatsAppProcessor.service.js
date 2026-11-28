@@ -3,6 +3,7 @@ const {
   getSupplierOutstanding,
   getLowStockItems,
   getProductStock,
+  getPartyDetails,
   calculateCashflow,
 } = require("./aiErpTools.service");
 const { identifyTenantByPhone, authenticate, logout } = require("./whatsappAuth.service");
@@ -48,13 +49,19 @@ async function sendWhatsAppDirect(recipientPhone, text) {
  * Main AI ERP Message Processor
  */
 async function handleIncomingWhatsAppMessage({ phone, message, tenantId: overrideTenantId }) {
+  // Check global enable toggle in .env
+  if (process.env.ENABLE_WHATSAPP_AI === "false") {
+    console.log("[WhatsApp Bot] Disabled via ENABLE_WHATSAPP_AI=false");
+    return { success: false, message: "WhatsApp AI Bot is disabled." };
+  }
+
   const text = String(message || "").trim();
   const lower = text.toLowerCase();
   let replyText = "";
 
   console.log(`[WhatsApp Bot] Processing message from ${phone}: "${text}"`);
 
-  // 1. Check if user is submitting LOGIN credentials manually
+  // 1. Manual Login command: "login: user pass"
   const loginPrefixMatch = text.match(/^login[:\s]+(.+)/i);
   if (loginPrefixMatch) {
     const credsPart = loginPrefixMatch[1].trim();
@@ -68,22 +75,39 @@ async function handleIncomingWhatsAppMessage({ phone, message, tenantId: overrid
     return { success: authResult.success, reply: replyText };
   }
 
-  // 2. Check if user wants to LOG OUT
+  // 2. Logout command
   if (lower === "logout" || lower === "log out") {
     replyText = await logout(phone);
     if (phone) await sendWhatsAppDirect(phone, replyText);
     return { success: true, reply: replyText };
   }
 
-  // 3. AUTO-IDENTIFY TENANT BASED ON USER MOBILE NUMBER!
+  // 3. AUTO-IDENTIFY TENANT BASED ON USER MOBILE NUMBER
   const identity = await identifyTenantByPhone(phone);
 
   let tenantId = overrideTenantId || identity?.tenantId;
   let tenantName = identity?.tenantName || "TrueBill";
   let userName = identity?.userName || "";
 
-  // 4. Intent Detection for Fast & Accurate DB Queries
-  // (A) Low Stock / Inventory Alerts
+  // 4. Intent Detection
+  // (A) Vendor / Customer Info & Last Paid Amount Query
+  const isVendorQuery =
+    lower.includes("vendor") ||
+    lower.includes("supplier info") ||
+    lower.includes("customer info") ||
+    lower.includes("vendor info") ||
+    lower.includes("last paid") ||
+    lower.includes("last payment") ||
+    lower.includes("last received") ||
+    lower.includes("contact details of") ||
+    lower.includes("gstin of");
+
+  // Regex patterns to extract party name
+  const partyMatch =
+    text.match(/(?:vendor|supplier|customer|party|paid to|received from|info of|details of|contact of)\s+([a-zA-Z0-9\s]+)/i) ||
+    text.match(/(?:last\s+(?:paid|payment|amount))\s+(?:for|to|of)?\s+([a-zA-Z0-9\s]+)/i);
+
+  // (B) Low Stock / Inventory Alerts
   const isLowStock =
     lower.includes("low stock") ||
     lower.includes("stock alert") ||
@@ -91,10 +115,10 @@ async function handleIncomingWhatsAppMessage({ phone, message, tenantId: overrid
     lower.includes("reorder") ||
     lower.includes("items running low");
 
-  // (B) Specific Product Stock Check
+  // (C) Specific Product Stock Check
   const stockOfMatch = text.match(/(?:stock|quantity|qty|available)\s+(?:of|for)?\s+([a-zA-Z0-9\s]+)/i);
 
-  // (C) Customer Outstanding
+  // (D) Customer Outstanding
   const isCustomerOutstanding =
     lower.includes("customer outstanding") ||
     lower.includes("customer balance") ||
@@ -105,7 +129,7 @@ async function handleIncomingWhatsAppMessage({ phone, message, tenantId: overrid
 
   const customerNameMatch = text.match(/(?:outstanding|balance|due)\s+(?:for|of|from)?\s+(?:customer\s+)?([a-zA-Z0-9\s]+)/i);
 
-  // (D) Supplier Outstanding / Payables
+  // (E) Supplier Outstanding / Payables
   const isSupplierOutstanding =
     lower.includes("supplier outstanding") ||
     lower.includes("supplier balance") ||
@@ -115,7 +139,7 @@ async function handleIncomingWhatsAppMessage({ phone, message, tenantId: overrid
 
   const supplierNameMatch = text.match(/(?:supplier\s+outstanding|owe to|pay to|supplier\s+due)\s+([a-zA-Z0-9\s]+)/i);
 
-  // (E) Cashflow & Sales Queries
+  // (F) Cashflow & Sales Queries
   const isCashflowQuery =
     lower.includes("cashflow") ||
     lower.includes("cash flow") ||
@@ -127,7 +151,7 @@ async function handleIncomingWhatsAppMessage({ phone, message, tenantId: overrid
     lower.includes("today summary");
 
   // If mobile is not linked and asking for private financial data
-  if ((isLowStock || isCustomerOutstanding || isSupplierOutstanding || isCashflowQuery) && !tenantId) {
+  if ((isVendorQuery || isLowStock || isCustomerOutstanding || isSupplierOutstanding || isCashflowQuery) && !tenantId) {
     replyText = [
       `👋 Hello!`,
       ``,
@@ -145,10 +169,30 @@ async function handleIncomingWhatsAppMessage({ phone, message, tenantId: overrid
   }
 
   // ----------------------------------------------------
-  // EXECUTE DIRECT DATABASE INTELLIGENCE
+  // 1. VENDOR / CUSTOMER INFO & LAST PAID AMOUNT
   // ----------------------------------------------------
+  if (isVendorQuery && tenantId) {
+    // Check .env feature flag
+    if (process.env.ENABLE_WHATSAPP_AI_VENDOR_INFO === "false") {
+      replyText = `⚠️ Vendor & customer information lookup is currently disabled in system settings.`;
+      if (phone) await sendWhatsAppDirect(phone, replyText);
+      return { success: false, reply: replyText };
+    }
 
-  // 1. Low stock inquiry
+    const rawName = partyMatch ? partyMatch[1].trim() : "";
+    const cleanName = rawName.replace(/vendor|supplier|customer|info|last|paid|amount|for|to|of|details|party/gi, "").trim();
+
+    if (cleanName.length >= 2) {
+      const partyData = await getPartyDetails({ tenantId, name: cleanName });
+      replyText = `🏢 *${tenantName}*\n${partyData.summary}`;
+      if (phone) await sendWhatsAppDirect(phone, replyText);
+      return { success: true, reply: replyText, data: partyData };
+    }
+  }
+
+  // ----------------------------------------------------
+  // 2. LOW STOCK INVENTORY ALERTS
+  // ----------------------------------------------------
   if (isLowStock && tenantId) {
     const stockData = await getLowStockItems({ tenantId });
     if (stockData.items.length === 0) {
@@ -163,8 +207,10 @@ async function handleIncomingWhatsAppMessage({ phone, message, tenantId: overrid
     return { success: true, reply: replyText, data: stockData };
   }
 
-  // 2. Specific product stock inquiry (e.g. "stock of Paracetamol" or "Paracetamol stock")
-  if (stockOfMatch && !isLowStock && tenantId) {
+  // ----------------------------------------------------
+  // 3. SPECIFIC PRODUCT STOCK INQUIRY
+  // ----------------------------------------------------
+  if (stockOfMatch && !isLowStock && !isVendorQuery && tenantId) {
     const prodName = stockOfMatch[1].trim();
     if (prodName.length >= 3 && !prodName.toLowerCase().includes("customer") && !prodName.toLowerCase().includes("cashflow")) {
       const prodResult = await getProductStock({ tenantId, productName: prodName });
@@ -176,8 +222,10 @@ async function handleIncomingWhatsAppMessage({ phone, message, tenantId: overrid
     }
   }
 
-  // 3. Customer Outstanding inquiry
-  if ((isCustomerOutstanding || (customerNameMatch && !isSupplierOutstanding)) && tenantId) {
+  // ----------------------------------------------------
+  // 4. CUSTOMER OUTSTANDING INQUIRY
+  // ----------------------------------------------------
+  if ((isCustomerOutstanding || (customerNameMatch && !isSupplierOutstanding && !isVendorQuery)) && tenantId) {
     const rawTargetName = customerNameMatch ? customerNameMatch[1].trim() : "";
     const cleanTargetName = rawTargetName.replace(/customer|any|today|total|amount|for|of/gi, "").trim();
 
@@ -219,8 +267,10 @@ async function handleIncomingWhatsAppMessage({ phone, message, tenantId: overrid
     return { success: true, reply: replyText, data: customerData };
   }
 
-  // 4. Supplier Outstanding inquiry
-  if ((isSupplierOutstanding || supplierNameMatch) && tenantId) {
+  // ----------------------------------------------------
+  // 5. SUPPLIER OUTSTANDING INQUIRY
+  // ----------------------------------------------------
+  if ((isSupplierOutstanding || (supplierNameMatch && !isVendorQuery)) && tenantId) {
     const rawSupplierName = supplierNameMatch ? supplierNameMatch[1].trim() : "";
     const cleanSupplierName = rawSupplierName.replace(/supplier|any|today|total|amount|for|of/gi, "").trim();
 
@@ -257,7 +307,9 @@ async function handleIncomingWhatsAppMessage({ phone, message, tenantId: overrid
     return { success: true, reply: replyText, data: supplierData };
   }
 
-  // 5. Cashflow & Sales direct queries
+  // ----------------------------------------------------
+  // 6. CASHFLOW & SALES QUERIES
+  // ----------------------------------------------------
   if (isCashflowQuery && tenantId) {
     const liveData = await calculateCashflow({ tenantId });
     replyText = `🏢 *${tenantName}*\n` + liveData.whatsappMessage;
@@ -266,7 +318,7 @@ async function handleIncomingWhatsAppMessage({ phone, message, tenantId: overrid
   }
 
   // ----------------------------------------------------
-  // 6. FOR ANY OTHER QUERY: USE SELF-DEPLOYED LLM
+  // 7. GENERAL QUERY -> SELF-DEPLOYED LLM
   // ----------------------------------------------------
   let businessSnapshot = "";
   if (tenantId) {
